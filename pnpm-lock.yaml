@@ -926,8 +926,8 @@ importers:
         specifier: ^0.11.1
         version: 0.11.1(typescript@5.7.3)(zod@3.24.1)
       '@vercel/flags':
-        specifier: ^3.0.2
-        version: 3.0.2(@opentelemetry/api@1.9.0)(next@15.0.1(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        specifier: ^3.1.0
+        version: 3.1.0(@opentelemetry/api@1.9.0)(next@15.0.1(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@vercel/toolbar':
         specifier: ^0.1.30
         version: 0.1.30(next@15.0.1(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)(vite@5.4.10(@types/node@22.10.7)(terser@5.31.0))
@@ -5796,8 +5796,8 @@ packages:
     resolution: {integrity: sha512-X5EG9W1cZW+Nbt/XdrJJSl5DzCXXn1JRP5nfFwkpFD03nB6uh6BldwX4syElHcciM4Pih8CS7Ri1mtLCJvxSHA==}
     engines: {node: '>=16.14'}
 
-  '@vercel/flags@3.0.2':
-    resolution: {integrity: sha512-MKcyJYEqsedvih56vGtZCNCytPalXeJy4q/97GDFFLWI09QXkbFUKq3wBWNYpOmEh2EarB+3BmD94aQxrJb6Yg==}
+  '@vercel/flags@3.1.0':
+    resolution: {integrity: sha512-TesmMiY9n5oY0BK1jPJhxrqwLf0w54ZYETrp6MSWqC/tqVIpc1E4IQNAUTvZ9OoyMoOqOn+BPRDXDHmKwTWaVA==}
     peerDependencies:
       '@opentelemetry/api': ^1.7.0
       '@sveltejs/kit': '*'
@@ -8183,6 +8183,9 @@ packages:
   jose@5.2.1:
     resolution: {integrity: sha512-qiaQhtQRw6YrOaOj0v59h3R6hUY9NvxBmmnMfKemkqYmBB0tEc97NbLP7ix44VP5p9/0YHG8Vyhzuo5YBNwviA==}
 
+  jose@5.9.6:
+    resolution: {integrity: sha512-AMlnetc9+CV9asI19zHmrgS/WYsWUwCn2R7RzlbJWD7F9eWYUTGyBmU9o6PxngtLGOiDGPRu+Uc4fhKzbpteZQ==}
+
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -8196,8 +8199,8 @@ packages:
     resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
     engines: {node: '>=14'}
 
-  js-tiktoken@1.0.16:
-    resolution: {integrity: sha512-nUVdO5k/M9llWpiaZlBBDdtmr6qWXwSD6fgaDu2zM8UP+OXxx9V37lFkI6w0/1IuaDx7WffZ37oYd9KvcWKElg==}
+  js-tiktoken@1.0.18:
+    resolution: {integrity: sha512-hFYx4xYf6URgcttcGvGuOBJhTxPYZ2R5eIesqCaNRJmYH8sNmsfTeWg4yu//7u1VD/qIUkgKJTpGom9oHXmB4g==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -9994,6 +9997,11 @@ packages:
 
   semver@7.6.3:
     resolution: {integrity: sha512-oVekP1cKtI+CTDvHWYFUcMtsK/00wmAEfyqKfNdARm8u1wNVhSgaX7A8d4UuIlUI5e84iEwOhs7ZPYRmzU9U6A==}
+    engines: {node: '>=10'}
+    hasBin: true
+
+  semver@7.7.1:
+    resolution: {integrity: sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -13152,7 +13160,7 @@ snapshots:
       ansi-styles: 5.2.0
       camelcase: 6.3.0
       decamelize: 1.2.0
-      js-tiktoken: 1.0.16
+      js-tiktoken: 1.0.18
       langsmith: 0.2.15
       mustache: 4.2.0
       p-queue: 6.6.2
@@ -16004,10 +16012,10 @@ snapshots:
       throttleit: 2.1.0
       undici: 5.28.5
 
-  '@vercel/flags@3.0.2(@opentelemetry/api@1.9.0)(next@15.0.1(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
+  '@vercel/flags@3.1.0(@opentelemetry/api@1.9.0)(next@15.0.1(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:
       '@edge-runtime/cookies': 5.0.2
-      jose: 5.2.1
+      jose: 5.9.6
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
       next: 15.0.1(@opentelemetry/api@1.9.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -18768,6 +18776,8 @@ snapshots:
 
   jose@5.2.1: {}
 
+  jose@5.9.6: {}
+
   joycon@3.1.1: {}
 
   js-beautify@1.15.1:
@@ -18780,7 +18790,7 @@ snapshots:
 
   js-cookie@3.0.5: {}
 
-  js-tiktoken@1.0.16:
+  js-tiktoken@1.0.18:
     dependencies:
       base64-js: 1.5.1
 
@@ -18880,7 +18890,7 @@ snapshots:
       commander: 10.0.1
       p-queue: 6.6.2
       p-retry: 4.6.2
-      semver: 7.6.3
+      semver: 7.7.1
       uuid: 10.0.0
 
   leac@0.6.0: {}
@@ -21077,6 +21087,8 @@ snapshots:
   semver@7.6.2: {}
 
   semver@7.6.3: {}
+
+  semver@7.7.1: {}
 
   sentence-case@2.1.1:
     dependencies:

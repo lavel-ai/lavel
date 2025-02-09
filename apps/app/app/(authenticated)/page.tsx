@@ -30,7 +30,7 @@ const App = async () => {
 
   return (
     <>
-      <Header pages={['Building Your Application']} page="Data Fetching">
+      <Header pages={[]} page="Data Fetching">s
         {env.LIVEBLOCKS_SECRET && (
           <CollaborationProvider orgId={orgId}>
             <AvatarStack />

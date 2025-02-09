@@ -37,19 +37,19 @@ import { cn } from '@repo/design-system/lib/utils';
 import { NotificationsTrigger } from '@repo/notifications/components/trigger';
 import {
   AnchorIcon,
-  BookOpenIcon,
-  BotIcon,
+  Building,
   ChevronRightIcon,
   FolderIcon,
   FrameIcon,
+  LayoutDashboard,
   LifeBuoyIcon,
   MapIcon,
   MoreHorizontalIcon,
   PieChartIcon,
+  Scale,
   SendIcon,
-  Settings2Icon,
   ShareIcon,
-  SquareTerminalIcon,
+  TextSearch,
   Trash2Icon,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -67,96 +67,32 @@ const data = {
   },
   navMain: [
     {
-      title: 'Playground',
+      title: 'Dashboard',
       url: '#',
-      icon: SquareTerminalIcon,
+      icon: LayoutDashboard,
       isActive: true,
-      items: [
-        {
-          title: 'History',
-          url: '#',
-        },
-        {
-          title: 'Starred',
-          url: '#',
-        },
-        {
-          title: 'Settings',
-          url: '#',
-        },
-      ],
     },
     {
-      title: 'Models',
+      title: 'Clientes',
       url: '#',
-      icon: BotIcon,
-      items: [
-        {
-          title: 'Genesis',
-          url: '#',
-        },
-        {
-          title: 'Explorer',
-          url: '#',
-        },
-        {
-          title: 'Quantum',
-          url: '#',
-        },
-      ],
+      icon: Building,
     },
     {
-      title: 'Documentation',
+      title: 'Investigación',
       url: '#',
-      icon: BookOpenIcon,
-      items: [
-        {
-          title: 'Introduction',
-          url: '#',
-        },
-        {
-          title: 'Get Started',
-          url: '#',
-        },
-        {
-          title: 'Tutorials',
-          url: '#',
-        },
-        {
-          title: 'Changelog',
-          url: '#',
-        },
-      ],
+      icon: TextSearch,
     },
     {
-      title: 'Settings',
+      title: 'Radar Judicial',
       url: '#',
-      icon: Settings2Icon,
-      items: [
-        {
-          title: 'General',
-          url: '#',
-        },
-        {
-          title: 'Team',
-          url: '#',
-        },
-        {
-          title: 'Billing',
-          url: '#',
-        },
-        {
-          title: 'Limits',
-          url: '#',
-        },
-      ],
+      icon: Scale,
     },
   ],
   navSecondary: [
     {
       title: 'Webhooks',
       url: '/webhooks',
-      icon: AnchorIcon,
+      icon: AnchorIcon, 
     },
     {
       title: 'Support',
@@ -173,7 +109,7 @@ const data = {
     {
       name: 'Design Engineering',
       url: '#',
-      icon: FrameIcon,
+      icon: FrameIcon,  
     },
     {
       name: 'Sales & Marketing',
@@ -306,7 +242,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
             </SidebarMenu>
           </SidebarGroup>
           <SidebarGroup className="mt-auto">
-            <SidebarGroupContent>
+            {/* <SidebarGroupContent>
               <SidebarMenu>
                 {data.navSecondary.map((item) => (
                   <SidebarMenuItem key={item.title}>
@@ -319,7 +255,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
-            </SidebarGroupContent>
+            </SidebarGroupContent> */}
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>

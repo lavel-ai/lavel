@@ -1,3 +1,4 @@
+// packages/auth/provider
 'use client';
 
 import { ClerkProvider } from '@clerk/nextjs';

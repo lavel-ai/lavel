@@ -1,22 +1,41 @@
+// apps/app/middleware.ts
 import { authMiddleware } from '@repo/auth/middleware';
+import { tenantMiddleware } from '../app/app/middleware/tenant-middleware'; // Import tenantMiddleware
+import { NextResponse } from 'next/server';
 import {
   noseconeMiddleware,
   noseconeOptions,
   noseconeOptionsWithToolbar,
-} from '@repo/security/middleware';
-import { env } from './env';
+} from '@repo/security/middleware'; // Keep import for noseconeMiddleware
+import { env } from '@/env';
 
-const securityHeaders = env.FLAGS_SECRET
-  ? noseconeMiddleware(noseconeOptionsWithToolbar)
-  : noseconeMiddleware(noseconeOptions);
-
-export default authMiddleware(() => securityHeaders());
+// const securityHeaders = env.FLAGS_SECRET             // {{ Comment out securityHeaders again }}
+//   ? noseconeMiddleware(noseconeOptionsWithToolbar)
+//   : noseconeMiddleware(noseconeOptions);
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    // Always run for API routes
+    '/((?!_next/static|_next/image|favicon.ico).*)',
     '/(api|trpc)(.*)',
   ],
 };
+
+
+export default authMiddleware(async (auth, request) => { // Re-introduce async wrapper
+  // Determine the hostname.
+  const hostname = request.headers.get('host') || '';
+  // Check if the request is on the main domain.
+  const mainDomain = env.NEXT_PUBLIC_APP_URL?.replace('https://', '');
+  const isMainDomain = hostname === mainDomain;
+
+  // Only run tenantMiddleware if we're NOT on the main domain.
+  if (!isMainDomain) {
+    const tenantResponse = await tenantMiddleware(request);
+    if (tenantResponse instanceof NextResponse) {
+      return tenantResponse;
+    }
+  }
+
+  // Finally, add the security headers.          // {{ Keep securityHeaders commented out }}
+  // return securityHeaders();
+});

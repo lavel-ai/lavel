@@ -1,53 +1,71 @@
-'server-only';
+// packages/database/src/main-app/queries/organization-queries.ts
 
 import { db } from '../db';
-import { organizationMembers, organizations } from '../schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { organizations, organizationMembers, projects, users } from '../schema';
 
-interface DefaultOrganization {
-    id: string;
-    subdomainSlug: string;
-}
-
-/**
- * Fetches the default organization for a user.
- * Currently returns the first organization the user is a member of.
- * In a real application, this could be enhanced to use user preferences or roles.
- */
-export async function fetchDefaultOrganizationForUser(userId: string): Promise<DefaultOrganization | null> {
+export async function fetchUserOrganization(clerkUserId: string): Promise<{ slug: string; connectionUrl: string | null; } | null> {
     try {
-        // Find the first organization the user is a member of
-        const memberOrg = await db.query.organizationMembers.findFirst({
-            where: (organizationMembers, { eq }) => eq(organizationMembers.userId, userId),
-            with: {
-                organization: {
-                    columns: {
-                        id: true,
-                        slug: true,
-                    }
-                }
-            }
+        // 1. Find the user by Clerk ID
+        const user = await db.query.users.findFirst({
+            where: eq(users.clerkId, clerkUserId),
+            columns: { id: true }, // We only need the user's ID
         });
 
-        if (!memberOrg?.organization?.slug) {
+        if (!user) {
+            console.log(`User with Clerk ID ${clerkUserId} not found.`);
             return null;
         }
 
+        // 2. Find the organization membership using the user's ID
+        const membership = await db.query.organizationMembers.findFirst({
+            where: eq(organizationMembers.userId, user.id),
+            with: {
+                organization: {
+                    columns: {
+                        slug: true, // Get the subdomain slug
+                    },
+                    with: {
+                      projects: {
+                        limit: 1, //just need one
+                        columns:{
+                          connectionUrl: true
+                        }
+                      }
+                    }
+                },
+
+            },
+        });
+
+        if (!membership || !membership.organization) {
+            console.log(`User ${user.id} is not a member of any organization.`);
+            return null;
+        }
+
+        if(!membership.organization.projects[0]?.connectionUrl){
+            console.log(`Organization ${membership.organization.slug} has no projects (or no connectionUrl).`);
+            return {
+              slug: membership.organization.slug!,
+              connectionUrl: null, // Or handle differently, like redirect to an error page.
+          };
+        }
+
         return {
-            id: memberOrg.organization.id,
-            subdomainSlug: memberOrg.organization.slug,
+            slug: membership.organization.slug!,
+            connectionUrl: membership.organization.projects[0].connectionUrl
         };
+
     } catch (error) {
-        console.error('Error fetching default organization:', error);
+        console.error('Error fetching organization for user:', error);
         return null;
     }
 }
 
-/**
- * Checks if a user is a member of a specific organization
- */
+// Keep this, it might be useful later
 export async function isUserOrganizationMember(userId: string, organizationId: string): Promise<boolean> {
-    try {
+    // ... (same as before)
+     try {
         const membership = await db.query.organizationMembers.findFirst({
             where: (organizationMembers, { and, eq }) => and(
                 eq(organizationMembers.userId, userId),

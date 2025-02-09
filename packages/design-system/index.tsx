@@ -1,3 +1,4 @@
+//packages/design-system/index.ts
 import { AnalyticsProvider } from '@repo/analytics';
 import { AuthProvider } from '@repo/auth/provider';
 import type { ThemeProviderProps } from 'next-themes';

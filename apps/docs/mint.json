@@ -75,6 +75,12 @@
         "api-reference/endpoint/create",
         "api-reference/endpoint/delete"
       ]
+    }, 
+    {
+      "group": "Sign-Up & Sign-in",
+      "pages": [
+        "authentication/sign-in"
+      ]
     }
   ],
   "footerSocials": {

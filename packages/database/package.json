@@ -10,7 +10,8 @@
     "db-tenant-app:generate": "cd src/tenant-app && npx drizzle-kit generate",
     "db-tenant-app:migrate": "cd packages/database/src/tenant-app && npx drizzle-kit migrate",
     "clean": "git clean -xdf .cache .turbo dist node_modules",
-    "typecheck": "tsc --noEmit --emitDeclarationOnly false"
+    "typecheck": "tsc --noEmit --emitDeclarationOnly false",
+    "test": "vitest"
   },
   "dependencies": {
     "@neondatabase/api-client": "^1.12.0",
@@ -32,6 +33,19 @@
     "bufferutil": "^4.0.9",
     "drizzle-kit": "^0.30.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "@repo/testing": "workspace:*",
+    "@testing-library/dom": "^10.1.0",
+    "@testing-library/react": "^14.2.1",
+    "vitest": "^1.2.2"
+  },
+  "eslintConfig": {
+    "root": true,
+    "extends": [
+      "@repo/eslint-config/base"
+    ],
+    "parserOptions": {
+      "project": "./tsconfig.json"
+    }
   }
 }

@@ -1,0 +1,500 @@
+# Lavel AI: Multi-Tenant System Architecture Documentation
+
+### 1. Introduction
+
+Lavel AI is a multi-tenant SaaS platform built using Next.js and a monorepo architecture (powered by Turbo Repo). It provides AI-powered legal tools for legal professionals in Mexico. Each organization using Lavel AI is considered a "tenant," and each tenant has its own logically isolated PostgreSQL database (hosted on Neon). Users access their organization's workspace via a unique subdomain (e.g., org-slug.lavel.ai).
+
+### 2. Core Concepts
+
+1.  **Tenant:** A single organization using the Lavel AI platform. Each tenant has its own isolated database.
+
+2.  **Subdomain:** Each tenant is identified by a unique subdomain (e.g., org-slug.lavel.ai). The subdomain is used to determine which tenant database to connect to.
+
+3.  **Main Application Database:** A central PostgreSQL database (also on Neon) that stores global application data, including:
+
+    *   `organizations`: Information about each tenant (organization name, slug, `subdomainSlug`, etc.).  The `subdomainSlug` is critical for routing.
+    *   `projects`: Links organizations to their database connection URLs. (The `connectionUrl` field is critical.)
+    *   `users`:  User accounts.  Stores the `clerkId` for each user, linking them to Clerk.
+    *   `organization_members`: Maps users to organizations (many-to-many relationship, although in the current implementation, users belong to only one organization).
+
+4.  **Tenant Database:** A separate PostgreSQL database for each tenant, containing that tenant's specific data (e.g., legal documents, case information, AI model outputs).
+https://pbs.twimg.com/media/GjMyJldWUAE5ICt?format%3Djpg%26name%3Dlarge
+5.  **Authentication:** Handled by Clerk. Users log in on the main domain (lavel.ai) and are then redirected to their organization's subdomain.
+
+6.  **Authorization:** Clerk provides the authentication and basic user information. Role-Based Access Control (RBAC) *within* each tenant's application would be a separate layer built on top of this (not fully detailed in the existing code, but mentioned as a future step).
+
+7. **Caching:** Redis, provided by Upstash, is used to cache the mapping between subdomains and database connection URLs, significantly improving performance.
+
+### 3. System Flow (User Login and Data Access)
+
+The following diagram illustrates the request flow, followed by a detailed explanation:
+
+```mermaid
+sequenceDiagram
+    participant UserBrowser as User Browser
+    participant VercelEdge as Vercel Edge Network
+    participant TenantMiddleware as Tenant Middleware
+    participant AuthMiddleware as Auth Middleware
+    participant AppLayout as App Layout
+    participant RouteHandler as Route Handler
+    participant MainDB as Main Database (Neon)
+    participant Redis as Redis (Upstash)
+    participant TenantDB as Tenant Database (Neon)
+
+    Note over UserBrowser,VercelEdge: User visits lavel.ai (or subdomain)
+
+    UserBrowser->>VercelEdge: Initial Request
+    VercelEdge->>TenantMiddleware: Run Tenant Middleware
+
+    alt Main Domain (lavel.ai)
+        TenantMiddleware->>AuthMiddleware: No tenant, proceed
+        AuthMiddleware->>UserBrowser: Redirect to Clerk Login (if unauthenticated)
+        Note over UserBrowser,AuthMiddleware: User logs in via Clerk
+        AuthMiddleware->>AppLayout: User is authenticated
+        AppLayout->>MainDB: fetchDefaultOrganizationForUser(userId)
+        MainDB-->>AppLayout: Organization Data (subdomainSlug)
+        AppLayout->>UserBrowser: Redirect to subdomain
+        Note over UserBrowser,VercelEdge: NEW Request to subdomain
+        UserBrowser->>VercelEdge: Subdomain Request
+        VercelEdge->>TenantMiddleware: Run Tenant Middleware
+    end
+
+    alt Subdomain Request (e.g., tenant-a.lavel.ai)
+        TenantMiddleware->>Redis: Get connection URL for subdomain
+        opt Cache Hit
+            Redis-->>TenantMiddleware: Cached URL
+        else Cache Miss
+            TenantMiddleware->>MainDB: Get organization by subdomain
+            MainDB-->>TenantMiddleware: Organization Data
+            TenantMiddleware->>MainDB: Get project by organization ID
+            MainDB-->>TenantMiddleware: Project Data (connectionUrl)
+            TenantMiddleware->>Redis: Store connection URL in cache
+        end
+        alt Connection URL Found
+          TenantMiddleware->>TenantDB: Create Drizzle Client (tenantDb)
+          TenantMiddleware->>TenantMiddleware: Attach tenantDb to req
+        else Connection URL Not Found
+          TenantMiddleware->>UserBrowser: Redirect to lavel.ai (or 404)
+          Note over UserBrowser,VercelEdge: End of flow (error)
+        end
+
+    end
+
+    TenantMiddleware->>AuthMiddleware: Proceed to Auth Middleware
+    AuthMiddleware->>UserBrowser: Verify Clerk Session
+    alt User Authenticated
+       AuthMiddleware->>RouteHandler:  Proceed to route
+        RouteHandler->>TenantMiddleware: getTenantDbClient(req)
+        TenantMiddleware-->>RouteHandler: Return tenantDb
+        RouteHandler->>TenantDB: Query Tenant Database
+        TenantDB-->>RouteHandler: Data
+        RouteHandler->>UserBrowser: Return response (data or UI)
+    else User NOT Authenticated
+        AuthMiddleware->>UserBrowser: Redirect to Clerk login (main domain)
+    end
+```
+
+### Step-by-Step Explanation:
+
+1.  **Request Initiation:** The user's browser makes a request to either the main domain (lavel.ai) or a tenant subdomain (e.g., tenant-a.lavel.ai).
+
+2.  **Tenant Middleware (Always Runs First):** The `tenantMiddleware` in `apps/app/middleware.ts` is the first piece of code executed.
+
+    *   **Main Domain:** If the request is to `lavel.ai`, the middleware does nothing related to databases. It simply passes control to the next middleware (Clerk).
+    *   **Subdomain:** If the request is to a subdomain, the middleware extracts the subdomain slug. It then calls `getTenantConnectionUrl` to retrieve the database connection URL.
+
+3.  **`getTenantConnectionUrl` (with Redis Caching):**
+
+    *   This function (in `@repo/database/src/tenant-app/tenant-lookup.ts`) first checks the Redis cache for an existing entry for the given subdomain.
+    *   **Cache Hit:** If found in Redis, the cached URL is returned immediately.
+    *   **Cache Miss:** If not in Redis, the function queries the *main* application database (using Drizzle ORM) to find the organization and its associated project, retrieving the `connectionUrl`. The result is then stored in Redis with a TTL (Time-To-Live) for future requests.
+    *   **No Tenant:** If no matching organization/project is found, the function returns `null`. The middleware then redirects the user to the main domain (or a 404 page).
+
+4.  **Tenant Database Connection (Subdomain Only):** If `getTenantConnectionUrl` returns a URL, the `tenantMiddleware` creates a new Drizzle ORM client *specifically for that tenant's database* using the retrieved URL. This client is attached to the `req` object (e.g., `req.tenantDb`).
+
+5.  **Clerk Authentication Middleware:** The Clerk middleware (`@repo/auth/middleware.ts`) runs *after* the `tenantMiddleware`. It verifies the user's session.
+
+    *   **Authenticated:** If the user is logged in, Clerk adds user information to the request, and the request proceeds.
+    *   **Not Authenticated:** Clerk redirects the user to the Clerk login page (on the *main* domain).
+
+6.  **App Layout (Conditional Redirection):** The `AppLayout` component (`apps/app/app/(authenticated)/layout.tsx`) runs for authenticated routes.
+
+    *   **Main Domain + Authenticated:**  This is the crucial redirection step.  If the user is on the *main domain* AND is *authenticated*, the layout calls `fetchDefaultOrganizationForUser` to get the user's organization and its `subdomainSlug`.  It then redirects the user to the appropriate subdomain URL.
+    *   **Subdomain:** If the user is *already* on a subdomain, the layout does *not* redirect. The `tenantMiddleware` has already handled the database connection.
+
+7.  **Route Handlers/Server Components:** Finally, the requested page or API endpoint (route handler) is executed.
+
+    *   These components use the `getTenantDbClient(req)` utility function (from `apps/app/utils/tenant-db.ts`) to retrieve the Drizzle client that was attached to the request by the `tenantMiddleware`. This ensures that they are interacting with the *correct* tenant database.
+    *   The route handler or component performs its logic (e.g., fetching data, processing requests) and returns a response.
+
+### 4. Component Breakdown:
+
+| Component                               | Location                                                                       | Description                                                                                                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenantMiddleware`                      | `apps/app/middleware.ts`                                      | Identifies the tenant based on the subdomain (if present) and sets up the Drizzle client for the tenant's database. Runs *before* authentication. If on the main domain, it does *nothing* related to databases. |
+| `authMiddleware`                        | `@repo/auth/middleware.ts`                                                     | Wrapper around Clerk's authentication middleware. Verifies user sessions. Redirects to Clerk login if not authenticated.                                                                                               |
+| `AppLayout`                             | `apps/app/app/(authenticated)/layout.tsx`                                      | Layout for authenticated routes. Handles *post-login redirection* to the user's organization subdomain if the user logged in on the main domain. Gets the user's organization via `fetchDefaultOrganizationForUser`.    |
+| `getTenantConnectionUrl`               | `@repo/database/src/tenant-app/queries/tenant-lookup.ts`                | Retrieves the database connection URL for a given subdomain. Uses Redis caching for performance. Queries the *main* application database if the URL is not in the cache.                                             |
+| `fetchDefaultOrganizationForUser`       | `@repo/database/src/main-app/queries/organization-queries.ts`                  | Queries the *main* database to get the organization a user is part of (using the Clerk user ID).                                                                                                                  |
+| `getTenantDbClient`                     | `apps/app/utils/tenant-db.ts`                                           | Utility function to retrieve the tenant-specific Drizzle client from the request context (`req.tenantDb`). Used in route handlers and server components to access the correct database. Throws an error if the client is not present, ensuring that tenant-specific code only runs with a valid tenant. |
+| Route Handlers/Server Components        | `apps/app/...`                                                               | The actual application logic (pages and API endpoints). They use `getTenantDbClient` to access the appropriate database (main or tenant).                                                                      |
+| Main Application Database Schema       | `@repo/database/src/main-app/schema`                                           | Defines the schema for the main application database (`organizations`, `projects`, `users`, `organization_members`).                                                                                                |
+| Tenant Database Schema                 | `@repo/database/src/tenant-app/schema`                                         | Defines the schema for *each* tenant's database.  This is where you would define tables specific to your application's data model (e.g., legal documents, client information, etc.).                        |
+| Redis Client                          | `@repo/rate-limit/`                             | Used for caching. The same Redis instance can be used for both rate limiting and caching tenant connection URLs.                        |
+| Main Application Database           |  `@repo/database/src/main-app/db.ts`          | Initializes the Drizzle client for the main application database using environment variables.|
+| Tenant Application Database           |  `@repo/database/src/tenant-app/tenant-connection-db.ts`    | Initializes the Drizzle client for the tenant application database, by creating a tenant connection. |
+| Clerk Webhook Handler (Optional)           |  `apps/api/app/webhooks/clerk/route.ts`    | Handles webhook events from Clerk (e.g. user creation, organization membership changes), Can be use to keep the main application database synchronized with Clerk. Currently updates user metadata but this is no longer the primary way to get organization information. |
+### 5. Component Interactions:
+
+*   The **User Browser** initiates requests to either the main domain or a tenant subdomain.
+*   **Vercel Edge Network** routes the request to the appropriate Next.js application.
+*   **Tenant Middleware** *always* runs first. It determines if a tenant database connection is needed and sets it up if so.
+*   **Auth Middleware** runs next, handling Clerk authentication.
+*   **App Layout** handles post-login redirection on the main domain.
+*   **Route Handlers/Server Components** use `getTenantDbClient` to access the correct database (main or tenant).
+*   **`getTenantConnectionUrl`** interacts with both Redis and the Main Database to retrieve connection URLs.
+
+### 6. Code Snippets (Key Files):
+
+**`@repo/database/src/main-app/queries/organization-queries.ts` (Organization Lookup):**
+
+```typescript
+// packages/database/src/main-app/queries/organization-queries.ts
+import { db } from '../db';
+import { eq } from 'drizzle-orm';
+import { organizationMembers, organizations } from '../schema';
+
+interface DefaultOrganization {
+    id: string;
+    subdomainSlug: string; // Use the correct field name
+}
+
+export async function fetchDefaultOrganizationForUser(userId: string): Promise<DefaultOrganization | null> {
+    try {
+        // Find the first organization this user is a member of
+        // In the future, you might want to add logic for "default" organization
+        const result = await db.query.organizationMembers.findFirst({
+            where: eq(organizationMembers.userId, userId),
+            with: {
+                organization: {
+                    columns: {
+                        id: true,
+                        subdomainSlug: true, // VERY IMPORTANT:  Use the correct field from your schema
+                        name: true  // You might need the org name
+                    }
+                }
+            }
+        });
+
+        if (!result?.organization?.subdomainSlug) { // Check for subdomainSlug specifically
+            return null;
+        }
+
+        return {
+            id: result.organization.id,
+            subdomainSlug: result.organization.subdomainSlug,
+        };
+    } catch (error) {
+        console.error('Error fetching organization for user:', error);
+        return null;
+    }
+}
+
+/**
+ * Checks if a user is a member of a specific organization.  (Less critical now, but useful for authorization later)
+ */
+export async function isUserOrganizationMember(userId: string, organizationId: string): Promise<boolean> {
+    try {
+        const membership = await db.query.organizationMembers.findFirst({
+            where: (organizationMembers, { and, eq }) => and(
+                eq(organizationMembers.userId, userId),
+                eq(organizationMembers.organizationId, organizationId)
+            ),
+            columns: { id: true }
+        });
+
+        return !!membership;
+    } catch (error) {
+        console.error('Error checking organization membership:', error);
+        return false;
+    }
+}
+```
+**`apps/app/app/(authenticated)/layout.tsx` (Post-Login Redirection):**
+```typescript
+// apps/app/app/(authenticated)/layout.tsx
+import { env } from '@/env';
+import { auth, currentUser } from '@repo/auth/server';
+import { fetchDefaultOrganizationForUser } from '@repo/database/src/main-app/queries/organization-queries';
+import { SidebarProvider } from '@repo/design-system/components/ui/sidebar';
+import { showBetaFeature } from '@repo/feature-flags';
+import { NotificationsProvider } from '@repo/notifications/components/provider';
+import { PostHogIdentifier } from './components/posthog-identifier';
+import { GlobalSidebar } from './components/sidebar';
+import type { ReactNode } from 'react';
+import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
+
+type AppLayoutProperties = {
+  readonly children: ReactNode;
+};
+
+const AppLayout = async ({ children }: AppLayoutProperties) => {
+  const { userId, redirectToSignIn } = await auth();
+
+  if (!userId) {
+    return redirectToSignIn();
+  }
+
+  const user = await currentUser();
+  if (!user) {
+    return redirectToSignIn();
+  }
+
+  // Get hostname to determine if we're on main domain
+  const headersList = await headers();
+  const hostname = headersList.get('host') || '';
+  const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '');
+  const isMainDomain = hostname === appUrlWithoutProtocol || hostname === 'localhost:3000';
+
+  if (isMainDomain) {
+    // On the main domain, fetch the user's default organization and redirect to the tenant subdomain.
+    const defaultOrg = await fetchDefaultOrganizationForUser(userId);
+    if (defaultOrg?.subdomainSlug) {
+      const tenantUrl = `https://${defaultOrg.subdomainSlug}.${env.NEXT_PUBLIC_APP_URL?.replace('https://', '')}`;
+      console.log("Redirecting to:", tenantUrl); //  Log for debugging
+      redirect(tenantUrl);
+    }
+    // If no organization is found, redirect to onboarding.
+    console.log("No organization found, redirecting to /onboarding");
+    redirect('/onboarding');  // You'll need to create this route
+  } else{
+      console.log("NOT on main domain"); // Log when NOT on main domain
+  }
+
+  const betaFeature = await showBetaFeature();
+  return (
+    <NotificationsProvider userId={user.id}>
+      <SidebarProvider>
+        <GlobalSidebar>
+          {betaFeature && (
+            <div className="m-4 rounded-full bg-success p-1.5 text-center text-sm text-success-foreground">
+              Beta feature now available
+            </div>
+          )}
+          {children}
+        </GlobalSidebar>
+        <PostHogIdentifier />
+      </SidebarProvider>
+    </NotificationsProvider>
+  );
+};
+
+export default AppLayout;
+```
+
+**`apps/app/middleware.ts` (Tenant Middleware):**
+
+```typescript
+// apps/app/middleware.ts
+import { authMiddleware } from '@repo/auth/middleware';
+import { tenantMiddleware } from './middleware/tenant-middleware'; // Import tenantMiddleware
+import { NextResponse } from 'next/server';
+import {
+  noseconeMiddleware,
+  noseconeOptions,
+  noseconeOptionsWithToolbar,
+} from '@repo/security/middleware'; // Keep import for noseconeMiddleware
+import { env } from '@/env';
+
+// const securityHeaders = env.FLAGS_SECRET             // {{ Comment out securityHeaders again }}
+//   ? noseconeMiddleware(noseconeOptionsWithToolbar)
+//   : noseconeMiddleware(noseconeOptions);
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/(api|trpc)(.*)',
+  ],
+};
+
+
+export default authMiddleware(async (auth, request) => { // Re-introduce async wrapper
+  // Determine the hostname.
+  const hostname = request.headers.get('host') || '';
+  // Check if the request is on the main domain.
+  const mainDomain = env.NEXT_PUBLIC_APP_URL?.replace('https://', '');
+  const isMainDomain = hostname === mainDomain;
+
+  // Only run tenantMiddleware if we're NOT on the main domain.
+  if (!isMainDomain) {
+    const tenantResponse = await tenantMiddleware(request);
+    if (tenantResponse instanceof NextResponse) {
+      return tenantResponse;
+    }
+  }
+
+  // Finally, add the security headers.          // {{ Keep securityHeaders commented out }}
+  // return securityHeaders();
+});
+```
+
+```typescript
+// apps/app/app/middleware/tenant-middleware.ts
+import { NextResponse, type NextRequest } from 'next/server';
+import { getTenantConnectionUrl } from '@repo/database/src/tenant-app/queries/tenant-lookup';
+import { createTenantConnection } from '@repo/database/src/tenant-app/tenant-connection-db';
+import * as schema from '@repo/database/src/tenant-app/schema';  // Import your tenant schema
+import { env } from '@/env'; // Your environment variable utility
+
+// Extend NextRequest to store the tenant Drizzle client as "tenantDb"
+declare module 'next/server' {
+  interface NextRequest {
+    tenantDb?: ReturnType<typeof createTenantConnection>;
+  }
+}
+
+export async function tenantMiddleware(req: NextRequest) {
+  const hostname = req.headers.get('host');
+  if (!hostname) {
+    return new NextResponse('No hostname found', { status: 400 });
+  }
+
+  // Correctly remove protocol (http:// or https://) for comparison
+  const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '');
+  // Check if it's the main domain (including localhost:3000)
+  const isMainDomain = hostname === appUrlWithoutProtocol || hostname === 'localhost:3000';
+
+
+  const isStaticAsset =
+    req.nextUrl.pathname.startsWith('/_next') ||
+    req.nextUrl.pathname.startsWith('/static');
+
+  if (isMainDomain || isStaticAsset) {
+    return NextResponse.next(); // Proceed without tenant DB setup
+  }
+
+  // Extract the subdomain from the hostname (e.g. "tenant-a" from "tenant-a.lavel.ai")
+  let subdomain = '';
+  if (hostname !== 'localhost:3000') { // {{ Skip split for localhost:3000 }}
+    subdomain = hostname.split('.')[0];
+  }
+
+
+  const connectionUrl = await getTenantConnectionUrl(subdomain); // Uses Redis caching
+
+  if (!connectionUrl) {
+    // Tenant not found, redirect to the main domain (or a 404 page)
+    return NextResponse.redirect(new URL('/', env.NEXT_PUBLIC_APP_URL));
+  }
+
+  try {
+    // Use the dedicated connection helper, passing in the tenant schema.
+    // Casting schema as any helps resolve type mismatches.
+    const tenantDb = createTenantConnection(connectionUrl, schema);
+    req.tenantDb = tenantDb; // Attach the client to the request
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error('Tenant middleware error (DB connection):', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
+  }
+}
+```
+
+**`apps/app/utils/tenant-db.ts` (Tenant DB Client Utility):**
+
+```typescript
+// apps/app/utils/tenant-db.ts
+import type { NextRequest } from 'next/server';
+import type { DrizzleClient } from '@repo/database/src/tenant-app/tenant-connection-db'; // Update the import if this changed
+
+
+export function getTenantDbClient(request: NextRequest): DrizzleClient {
+  const tenantDb = request.tenantDb;
+  if (!tenantDb) {
+    throw new Error(
+      "Tenant database client not initialized. Ensure that tenantMiddleware has run on this request."
+    );
+  }
+  return tenantDb;
+}
+```
+**`@repo/database/src/tenant-app/queries/tenant-lookup.ts` (Double Check with Redis):**
+
+```typescript
+// packages/database/src/tenant-app/queries/tenant-lookup.ts
+import 'server-only';
+import { db } from '../../main-app/db'; // Main application database client
+import { redis } from '@repo/rate-limit'; // Import your Redis client (from rate-limit package)
+import { and, eq } from 'drizzle-orm';
+import { organizations } from '../../main-app/schema/organizations-schema';
+import { projects } from '../../main-app/schema/projects-schema';
+
+const CACHE_TTL_SECONDS = 60 * 60; // 1 hour cache TTL (adjust as needed)
+
+/**
+ * Retrieves the tenant database connection URL for a given subdomain.
+ * Uses Redis caching to minimize database lookups.
+ */
+export async function getTenantConnectionUrl(subdomain: string): Promise<string | null> {
+  const cacheKey = `tenant:connectionUrl:${subdomain}`;
+
+  // 1. Try to get from Redis cache
+    const cachedUrl = await redis.get<string>(cacheKey);
+    if (cachedUrl) {
+        console.log(`Cache HIT for subdomain: ${subdomain}`);
+        return cachedUrl;
+    }
+
+  console.log(`Cache MISS for subdomain: ${subdomain}`);
+
+  // 2. If not in cache, query the main database
+  try {
+    const organization = await db.query.organizations.findFirst({
+      where: eq(organizations.subdomainSlug, subdomain), // Use the correct field name!
+      columns: { id: true }, // Only select necessary columns
+        with: {
+          projects: {
+            limit: 1, //just need one
+            columns:{
+              connectionUrl: true
+            }
+          }
+        }
+    });
+
+    if (!organization) {
+      return null; // Organization not found
+    }
+    const connectionUrl = organization.projects[0]?.connectionUrl;
+
+    // 3. Store in Redis cache (if found)
+    if (connectionUrl) {
+      await redis.set(cacheKey, connectionUrl, { ex: CACHE_TTL_SECONDS });
+    }
+
+    return connectionUrl ?? null;
+  } catch (error) {
+    console.error("Error looking up tenant connection URL:", error);
+    return null;
+  }
+}
+
+/**
+ * Clears the connection URL cache for a specific tenant.
+ */
+export async function clearTenantConnectionCache(subdomain: string): Promise<void> {
+  const cacheKey = `tenant:connectionUrl:${subdomain}`;
+  await redis.del(cacheKey);
+}
+
+/**
+ *  Clears all tenant connection URL caches
+ */
+export async function clearAllTenantConnectionCaches(): Promise<void> {
+    const keys = await redis.keys('tenant:connectionUrl:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+}

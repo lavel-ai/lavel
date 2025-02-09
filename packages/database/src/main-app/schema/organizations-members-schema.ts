@@ -3,6 +3,7 @@ import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { organizations } from './organizations-schema';
 import { users } from './users-schema';
+
 export const organizationMembers = pgTable('organization_members', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').references(() => organizations.id),

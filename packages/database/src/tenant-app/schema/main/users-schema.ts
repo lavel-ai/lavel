@@ -1,14 +1,10 @@
-import {
-  boolean,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
-export const users = pgTable('users', {
-  userId: uuid('user_id').primaryKey(),
+export const mainSchema = pgSchema("main");
+
+export const users = mainSchema.table('users', {
+  id: uuid('id').primaryKey(),
   clerkId: text('clerk_id').unique().notNull(),
   signupStatus: text('signup_status').default('awaiting_org'),
   email: text('email').unique().notNull(),
@@ -27,3 +23,6 @@ export const users = pgTable('users', {
 // Types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+
+export const usersInsertSchema = createInsertSchema(users);
+export const usersSelectSchema = createSelectSchema(users);

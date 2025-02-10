@@ -1,6 +1,6 @@
 // apps/app/middleware.ts
 import { authMiddleware } from '@repo/auth/middleware';
-import { tenantMiddleware } from '../app/app/middleware/tenant-middleware'; // Import tenantMiddleware
+import { tenantMiddleware } from './app/middleware/tenant-middleware'; // Import tenantMiddleware
 import { NextResponse } from 'next/server';
 import {
   noseconeMiddleware,
@@ -25,8 +25,10 @@ export default authMiddleware(async (auth, request) => { // Re-introduce async w
   // Determine the hostname.
   const hostname = request.headers.get('host') || '';
   // Check if the request is on the main domain.
-  const mainDomain = env.NEXT_PUBLIC_APP_URL?.replace('https://', '');
-  const isMainDomain = hostname === mainDomain;
+
+  //Correct Main Domain Check
+  const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '');
+  const isMainDomain = hostname === appUrlWithoutProtocol || hostname === 'localhost:3000';
 
   // Only run tenantMiddleware if we're NOT on the main domain.
   if (!isMainDomain) {

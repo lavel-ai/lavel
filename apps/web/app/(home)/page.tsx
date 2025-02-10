@@ -28,12 +28,12 @@ const Home = async () => {
         </div>
       )}
       <Hero />
-      <Cases />
+      {/* <Cases />
       <Features />
       <Stats />
       <Testimonials />
       <FAQ />
-      <CTA />
+      <CTA /> */}
     </>
   );
 };

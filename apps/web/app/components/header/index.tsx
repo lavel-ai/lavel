@@ -119,14 +119,7 @@ export const Header = () => {
           </NavigationMenu>
         </div>
         <div className="flex items-center gap-2 lg:justify-center">
-          <Image
-            src={Logo}
-            alt="Logo"
-            width={24}
-            height={24}
-            className="dark:invert"
-          />
-          <p className="whitespace-nowrap font-semibold">next-forge</p>
+          <p className="whitespace-nowrap font-semibold">Lavel</p>
         </div>
         <div className="flex w-full justify-end gap-4">
           <Button variant="ghost" className="hidden md:inline" asChild>

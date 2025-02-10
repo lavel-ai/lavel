@@ -3,55 +3,24 @@
 import { OrganizationSwitcher, UserButton } from '@repo/auth/client';
 import { ModeToggle } from '@repo/design-system/components/mode-toggle';
 import { Button } from '@repo/design-system/components/ui/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@repo/design-system/components/ui/collapsible';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@repo/design-system/components/ui/dropdown-menu';
+import { Collapsible } from '@repo/design-system/components/ui/collapsible';
+import {} from '@repo/design-system/components/ui/dropdown-menu';
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   useSidebar,
 } from '@repo/design-system/components/ui/sidebar';
 import { cn } from '@repo/design-system/lib/utils';
 import { NotificationsTrigger } from '@repo/notifications/components/trigger';
-import {
-  AnchorIcon,
-  Building,
-  ChevronRightIcon,
-  FolderIcon,
-  FrameIcon,
-  LayoutDashboard,
-  LifeBuoyIcon,
-  MapIcon,
-  MoreHorizontalIcon,
-  PieChartIcon,
-  Scale,
-  SendIcon,
-  ShareIcon,
-  TextSearch,
-  Trash2Icon,
-} from 'lucide-react';
+import { Building, LayoutDashboard, Scale, TextSearch } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Search } from './search';
 
@@ -86,40 +55,6 @@ const data = {
       title: 'Radar Judicial',
       url: '#',
       icon: Scale,
-    },
-  ],
-  navSecondary: [
-    {
-      title: 'Webhooks',
-      url: '/webhooks',
-      icon: AnchorIcon, 
-    },
-    {
-      title: 'Support',
-      url: '#',
-      icon: LifeBuoyIcon,
-    },
-    {
-      title: 'Feedback',
-      url: '#',
-      icon: SendIcon,
-    },
-  ],
-  projects: [
-    {
-      name: 'Design Engineering',
-      url: '#',
-      icon: FrameIcon,  
-    },
-    {
-      name: 'Sales & Marketing',
-      url: '#',
-      icon: PieChartIcon,
-    },
-    {
-      name: 'Travel',
-      url: '#',
-      icon: MapIcon,
     },
   ],
 };
@@ -165,34 +100,12 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
                         <span>{item.title}</span>
                       </a>
                     </SidebarMenuButton>
-                    {item.items?.length ? (
-                      <>
-                        <CollapsibleTrigger asChild>
-                          <SidebarMenuAction className="data-[state=open]:rotate-90">
-                            <ChevronRightIcon />
-                            <span className="sr-only">Toggle</span>
-                          </SidebarMenuAction>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <SidebarMenuSub>
-                            {item.items?.map((subItem) => (
-                              <SidebarMenuSubItem key={subItem.title}>
-                                <SidebarMenuSubButton asChild>
-                                  <a href={subItem.url}>
-                                    <span>{subItem.title}</span>
-                                  </a>
-                                </SidebarMenuSubButton>
-                              </SidebarMenuSubItem>
-                            ))}
-                          </SidebarMenuSub>
-                        </CollapsibleContent>
-                      </>
-                    ) : null}
                   </SidebarMenuItem>
                 </Collapsible>
               ))}
             </SidebarMenu>
           </SidebarGroup>
+          {/* Projects section removed as it's not needed
           <SidebarGroup className="group-data-[collapsible=icon]:hidden">
             <SidebarGroupLabel>Projects</SidebarGroupLabel>
             <SidebarMenu>
@@ -241,6 +154,7 @@ export const GlobalSidebar = ({ children }: GlobalSidebarProperties) => {
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
+          */}
           <SidebarGroup className="mt-auto">
             {/* <SidebarGroupContent>
               <SidebarMenu>

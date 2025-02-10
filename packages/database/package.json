@@ -10,8 +10,7 @@
     "db-tenant-app:generate": "cd src/tenant-app && npx drizzle-kit generate",
     "db-tenant-app:migrate": "cd packages/database/src/tenant-app && npx drizzle-kit migrate",
     "clean": "git clean -xdf .cache .turbo dist node_modules",
-    "typecheck": "tsc --noEmit --emitDeclarationOnly false",
-    "test": "vitest"
+    "typecheck": "tsc --noEmit --emitDeclarationOnly false"
   },
   "dependencies": {
     "@neondatabase/api-client": "^1.12.0",

@@ -13,10 +13,10 @@ export const Hero = async () => {
     <div className="w-full">
       <div className="container mx-auto">
         <div className="flex flex-col items-center justify-center gap-8 py-20 lg:py-40">
-          <div>
+          {/* <div>
             <Feed queries={[blog.latestPostQuery]} draft={draft.isEnabled}>
               {/* biome-ignore lint/suspicious/useAwait: "Server Actions must be async" */}
-              {async ([data]) => {
+              {/* {async ([data]) => {
                 'use server';
 
                 return (
@@ -32,17 +32,14 @@ export const Hero = async () => {
                   </Button>
                 );
               }}
-            </Feed>
-          </div>
+            </Feed> */}
+          {/* </div> */}
           <div className="flex flex-col gap-4">
             <h1 className="max-w-2xl text-center font-regular text-5xl tracking-tighter md:text-7xl">
-              This is the start of something new
+              Tecnología que amplifica tu expertise legal
             </h1>
             <p className="max-w-2xl text-center text-lg text-muted-foreground leading-relaxed tracking-tight md:text-xl">
-              Managing a small business today is already tough. Avoid further
-              complications by ditching outdated, tedious trade methods. Our
-              goal is to streamline SMB trade, making it easier and faster than
-              ever.
+              Gestión de casos, creación inteligente de documentos y automatización de tareas legales
             </p>
           </div>
           <div className="flex flex-row gap-3">

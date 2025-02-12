@@ -6,7 +6,8 @@ import { corporations } from "./corporations-schema";
 import { users } from "./users-schema";
 import { teams } from "./teams-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-export const tenantSchema = pgSchema("tenant");
+
+export const mainSchema = pgSchema("main");
 
 // Define the structure for contact information
 export const clientContactInfoSchema = {
@@ -39,7 +40,7 @@ export const clientBillingInfoSchema = {
     preferredCurrency: varchar("preferred_currency", { length: 3 })
 } as const;
 
-export const clients = tenantSchema.table("clients", {
+export const clients = mainSchema.table("clients", {
     // Primary identifier
     id: uuid("id").defaultRandom().primaryKey().notNull(),
     

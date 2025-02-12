@@ -144,6 +144,9 @@ export const casesRelations = relations(cases, ({ one, many }) => ({
 
 export type Case = typeof cases.$inferSelect;
 export type NewCase = typeof cases.$inferInsert;
+export type CaseInsert = typeof cases.$inferInsert;
 
-export const caseInsertSchema = createInsertSchema(cases);
-export const caseSelectSchema = createSelectSchema(cases);
+// Zod schemas for validation
+export const InsertCaseSchema = createInsertSchema(cases);
+export const UpdateCaseSchema = InsertCaseSchema.partial();
+export const SelectCaseSchema = createSelectSchema(cases);

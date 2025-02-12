@@ -48,7 +48,7 @@ export async function tenantMiddleware(req: NextRequest) {
 
   // 5. Create the tenant-specific Drizzle client and attach it to the request
   try {
-    const tenantDb = createTenantConnection(connectionUrl, schema);
+    const tenantDb = createTenantConnection(connectionUrl);
     req.tenantDb = tenantDb;
     console.log(`[Tenant Middleware] Tenant DB connection established for: ${subdomain}`);
     return NextResponse.next();

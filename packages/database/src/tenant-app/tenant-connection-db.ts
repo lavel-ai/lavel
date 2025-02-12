@@ -1,36 +1,58 @@
 // packages/database/src/tenant-app/tenant-connection-db.ts
+
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-serverless';
 import ws from 'ws';
+import { combinedSchema } from './schema';  // This imports your combined schema from index.ts
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 // Supply a WebSocket constructor if running in Node.js.
 neonConfig.webSocketConstructor = ws;
 
 /**
  * Creates and returns a tenant-specific Drizzle client using a Neon connection pool.
- * 
- * You can pass an optional schema to bind the client to your tenant tables.
+ *
+ * This client is configured with the combined schema which includes:
+ *  - main
+ *  - reference
+ *  - embeddings
  *
  * @param connectionUrl - The tenant's database connection URL.
- * @param schema - (Optional) The tenant schema.
- * @returns A configured Drizzle client.
+ * @returns A properly typed Drizzle client with the combined schema.
  */
-export function createTenantConnection(connectionUrl: string, schema?: unknown) {
+export function createTenantConnection(
+  connectionUrl: string
+): PostgresJsDatabase<typeof combinedSchema> {
   // Create a new pool using the provided connection URL.
+  // Under the hood, Neon uses PG Bouncer to efficiently manage these connections.
   const pool = new Pool({ connectionString: connectionUrl });
   
-  // If a schema is provided, pass it to drizzle. Sometimes the types for the schema
-  // may not exactly line up; casting it as any can resolve this.
-  if (schema) {
-    return drizzle(pool, { schema: schema as any });
-  }
-  return drizzle(pool);
+  // Return a Drizzle client, passing in the combined schema.
+  return drizzle(pool, { schema: combinedSchema });
 }
 
 // Export the type of the drizzle client for type-safety elsewhere in your code.
 export type DrizzleClient = ReturnType<typeof createTenantConnection>;
 
-/** Note:
-If you later wish to improve the type definitions for your schema (instead of casting to any), 
-you can refine the types in your tenant schema module so that drizzle’s generic parameters work as expected.
-*/
+// Cache for database connections to avoid creating multiple connections for the same tenant.
+const connectionCache = new Map<string, DrizzleClient>();
+
+/**
+ * Gets or creates a tenant database connection from the cache.
+ *
+ * By caching the connection, we avoid the overhead of reinitializing the pool for each request.
+ *
+ * @param connectionUrl - The tenant's database connection URL.
+ * @returns A cached or new database connection.
+ */
+export function getTenantConnection(
+  connectionUrl: string
+): DrizzleClient {
+  const cacheKey = connectionUrl; // Using the connection URL as the unique cache key.
+  
+  if (!connectionCache.has(cacheKey)) {
+    connectionCache.set(cacheKey, createTenantConnection(connectionUrl));
+  }
+  
+  return connectionCache.get(cacheKey)!;
+}

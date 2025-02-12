@@ -66,3 +66,4 @@ export type NewCaseParty = typeof caseParties.$inferInsert;
 
 export const casePartyInsertSchema = createInsertSchema(caseParties);
 export const casePartySelectSchema = createSelectSchema(caseParties);
+// export const casePartyUpdateSchema = casePartyInsertSchema.partial();

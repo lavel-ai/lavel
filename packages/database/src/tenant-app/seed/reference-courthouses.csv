@@ -1,0 +1,140 @@
+id,name,city,state,law_branch,parent_id,jurisdiction
+,poder judicial de la federación,ciudad de méxico,ciudad de méxico,judicial,,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"sexto tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"séptimo tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"octavo tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"noveno tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"décimo tribunal laboral federal de asuntos individuales en el estado de nuevo león, con sede en monterrey",monterrey,nuevo león,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de tabasco, con sede en villahermosa",villa hermosa,tabasco,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de tabasco, con sede en villahermosa",villa hermosa,tabasco,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en coatzacoalcos",coatzacoalcos,veracruz,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en coatzacoalcos",coatzacoalcos,veracruz,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de tabasco, con sede en villahermosa",villa hermosa,tabasco,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de tabasco, con sede en villahermosa",villa hermosa,tabasco,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de tabasco, con sede en villahermosa",villa hermosa,tabasco,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de tabasco, con sede en villahermosa",villa hermosa,tabasco,laboral,1,federal
+,"sexto tribunal laboral federal de asuntos individuales en el estado de tabasco, con sede en villahermosa",villa hermosa,tabasco,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de yucatán, con sede en mérida",mérida,sinaloa,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de yucatán, con sede en mérida",mérida,sinaloa,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de tamaulipas, con sede en ciudad victoria",ciudad victoria,tamaulipas,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de tamaulipas, con sede en tampico",tampico,tamaulipas,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de tamaulipas, con sede en tampico",tampico,tamaulipas,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de tamaulipas, con sede en reynosa",reynosa,tamaulipas,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de tamaulipas, con sede en reynosa",reynosa,tamaulipas,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de morelos, con sede en cuernavaca",cuernavaca,morelos,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de morelos, con sede en cuernavaca",cuernavaca,morelos,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de michoacán, con sede en morelia",morelia,michoacán,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de michoacán, con sede en morelia",morelia,michoacán,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de baja california, con sede en ensenada",ensenada,baja california,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de baja california, con sede en tijuana",tijuana,baja california,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de chihuahua, con sede en chihuahua",chihuahua,chihuahua,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de chihuahua, con sede en ciudad juárez",ciudad juárez,chihuahua,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de sinaloa, con sede en culiacán",culiacán,sinaloa,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de sinaloa, con sede en culiacán",culiacán,sinaloa,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de chihuahua, con sede en chihuahua",chihuahua,chihuahua,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de guanajuato, con sede en guanajuato",guanajuato,guanajuato,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de guanajuato, con sede en guanajuato",guanajuato,guanajuato,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de guanajuato, con sede en guanajuato",guanajuato,guanajuato,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de guanajuato, con sede en guanajuato",guanajuato,guanajuato,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de oaxaca, con sede en oaxaca",oaxaca,oaxaca,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de oaxaca, con sede en oaxaca",oaxaca,oaxaca,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de san luis potosí, con sede en san luis potosí",san luis potosí,san luis potosí,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de san luis potosí, con sede en san luis potosí",san luis potosí,san luis potosí,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de san luis potosí, con sede en san luis potosí",san luis potosí,san luis potosí,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de san luis potosí, con sede en san luis potosí",san luis potosí,san luis potosí,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de coahuila, con sede en saltillo",saltillo,coahuila,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de coahuila, con sede en saltillo",saltillo,coahuila,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de coahuila, con sede en saltillo",saltillo,coahuila,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de coahuila, con sede en saltillo",saltillo,coahuila,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de coahuila, con sede en torreón",torreón,coahuila,laboral,1,federal
+,"sexto tribunal laboral federal de asuntos individuales en el estado de coahuila, con sede en torreón",torreón,coahuila,laboral,1,federal
+,"séptimo tribunal laboral federal de asuntos individuales en el estado de coahuila, con sede en torreón",torreón,coahuila,laboral,1,federal
+,"tribunal laboral federal de asuntos colectivos, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"sexto tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"séptimo tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"octavo tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"noveno tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo primer tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo segundo tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo tercero tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo cuarto tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo quinto tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo sexto tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"décimo séptimo tribunal laboral federal de asuntos individuales, con sede en la ciudad de méxico",ciudad de méxico,ciudad de méxico,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de sonora, con sede en hermosillo",hermosillo,sonora,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de sonora, con sede en hermosillo",hermosillo,sonora,laboral,1,federal
+,"sexto tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"séptimo tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"octavo tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"noveno tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"décimo tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en boca del río",boca del río,veracruz,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en boca del río",boca del río,veracruz,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en boca del río",boca del río,veracruz,laboral,1,federal
+,"sexto tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en xalapa",xalapa,veracruz,laboral,1,federal
+,"séptimo tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en xalapa",xalapa,veracruz,laboral,1,federal
+,"octavo tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en xalapa",xalapa,veracruz,laboral,1,federal
+,"noveno tribunal laboral federal de asuntos individuales en el estado de veracruz, con sede en xalapa",xalapa,veracruz,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en toluca",toluca,estado de méxico,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en toluca",toluca,estado de méxico,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en toluca",toluca,estado de méxico,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en toluca",toluca,estado de méxico,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de méxico, con sede en naucalpan",naucalpan,estado de méxico,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de puebla, con sede en puebla",puebla,puebla,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de puebla, con sede en puebla",puebla,puebla,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de puebla, con sede en puebla",puebla,puebla,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de puebla, con sede en puebla",puebla,puebla,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"sexto tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"séptimo tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"octavo tribunal laboral federal de asuntos individuales en el estado de jalisco, con sede en zapopan",zapopan,jalisco,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de aguascalientes, con sede en aguascalientes",aguascalientes,aguascalientes,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de aguascalientes, con sede en aguascalientes",aguascalientes,aguascalientes,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de campeche, con sede en campeche",campeche,campeche,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de campeche, con sede en ciudad del carmen",ciudad del cármen,campeche,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de campeche, con sede en campeche",campeche,campeche,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de campeche, con sede en campeche",campeche,campeche,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de campeche, con sede en ciudad del carmen",ciudad del cármen,campeche,laboral,1,federal
+,"cuarto tribunal laboral federal de asuntos individuales en el estado de campeche, con sede en ciudad del carmen",ciudad del cármen,campeche,laboral,1,federal
+,"quinto tribunal laboral federal de asuntos individuales en el estado de campeche, con sede en ciudad del carmen",ciudad del cármen,campeche,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de colima, con sede en colima",colima,colima,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de chiapas, con sede en tuxtla gutiérrez",tuxtla gutiérrez,chiapas,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de chiapas, con sede en tuxtla gutiérrez",tuxtla gutiérrez,chiapas,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de chiapas, con sede en tuxtla gutiérrez",tuxtla gutiérrez,chiapas,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de chiapas, con sede en tuxtla gutiérrez",tuxtla gutiérrez,chiapas,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de nayarit, con sede en tepic",tepic,nayarit,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de hidalgo, con sede en pachuca",pachuca,hidalgo,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de hidalgo, con sede en pachuca",pachuca,hidalgo,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de hidalgo, con sede en pachuca",pachuca,hidalgo,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de hidalgo, con sede en pachuca",pachuca,hidalgo,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de tlaxcala, con sede en tlaxcala",tlaxcala,tlaxcala,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de tlaxcala, con sede en tlaxcala",tlaxcala,tlaxcala,laboral,1,federal
+,"tercer tribunal laboral federal de asuntos individuales en el estado de tlaxcala, con sede en tlaxcala",tlaxcala,tlaxcala,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de guerrero, con sede en acapulco",acapulco,guerrero,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de durango, con sede en durango",durango,durango,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de durango, con sede en durango",durango,durango,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de durango, con sede en durango",durango,durango,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de querétaro, con sede en querétaro",querétaro,querétaro,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de quintana roo, con sede en cancún",cancún,quintana roo,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de querétaro, con sede en querétaro",querétaro,querétaro,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de baja california sur, con sede en la paz",la paz,baja california sur,laboral,1,federal
+,"tribunal laboral federal de asuntos individuales en el estado de zacatecas, con sede en zacatecas",zacatecas,zacatecas,laboral,1,federal
+,"primer tribunal laboral federal de asuntos individuales en el estado de zacatecas, con sede en zacatecas",zacatecas,zacatecas,laboral,1,federal
+,"segundo tribunal laboral federal de asuntos individuales en el estado de zacatecas, con sede en zacatecas",zacatecas,zacatecas,laboral,1,federal

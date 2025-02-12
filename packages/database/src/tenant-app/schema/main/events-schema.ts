@@ -20,7 +20,7 @@ export const events = mainSchema.table("events", {
   isAllDay: boolean("is_all_day").default(false).notNull(),
   location: varchar("location", { length: 255 }),
   createdAt: timestamp("created_at", { withTimezone: true }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   status: eventStatus("status").default('confirmed').notNull(),
   recurrenceRule: text("recurrence_rule"),
   organizerId: uuid("organizer_id").notNull(),

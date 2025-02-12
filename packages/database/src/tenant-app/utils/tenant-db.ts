@@ -1,3 +1,5 @@
+// packages/database/src/tenant-app/utils/tenant-db.ts
+
 import type { DrizzleClient } from '../tenant-connection-db';
 import { isTenantRequest } from '../types';
 import type { TenantRequest } from '../types';

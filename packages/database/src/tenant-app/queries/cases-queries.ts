@@ -59,3 +59,5 @@ export async function deleteCase(
 ): Promise<void> {
   await tenantDb.delete(cases).where(eq(cases.id, caseId)).execute();
 }
+
+

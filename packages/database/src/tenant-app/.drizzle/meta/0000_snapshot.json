@@ -1,5 +1,5 @@
 {
-  "id": "5b8f0f5d-a1b7-4117-aa78-584b0196a33b",
+  "id": "21217f40-6e79-4492-8d81-e29e6e4b50ff",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3517,36 +3517,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "courthouses_city_id_unique": {
-          "name": "courthouses_city_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "city_id"
-          ]
-        },
-        "courthouses_law_branch_id_unique": {
-          "name": "courthouses_law_branch_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "law_branch_id"
-          ]
-        },
-        "courthouses_jurisdiction_id_unique": {
-          "name": "courthouses_jurisdiction_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "jurisdiction_id"
-          ]
-        },
-        "courthouses_state_id_unique": {
-          "name": "courthouses_state_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "state_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

@@ -13,7 +13,7 @@ export const teamMembers = mainSchema.table("team_members", {
     // Identifiers
     id: uuid("id").defaultRandom().primaryKey().notNull(),
     teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: 'cascade' }),
-    profileId: uuid("profile_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
     role: varchar("role", { length: 50 }).notNull().default('member'),
     
     // Timestamps
@@ -31,7 +31,7 @@ export const teamMembers = mainSchema.table("team_members", {
 (table) => {
     return {
         // Ensure a profile can only be added to a team once
-        uniqueTeamMember: unique().on(table.teamId, table.profileId),
+        uniqueTeamMember: unique().on(table.teamId, table.userId),
 
         // Foreign key constraints for audit fields
         teamMembersCreatedByFkey: foreignKey({
@@ -54,10 +54,10 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
         references: [teams.id],
         relationName: "team_member_team"
     }),
-    profile: one(users, {
-        fields: [teamMembers.profileId],
+    user: one(users, {
+        fields: [teamMembers.userId],
         references: [users.id],
-        relationName: "team_member_profile"
+        relationName: "team_member_user"
     }),
     createdByUser: one(users, {
         fields: [teamMembers.createdBy],

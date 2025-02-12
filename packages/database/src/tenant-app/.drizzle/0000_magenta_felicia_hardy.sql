@@ -416,11 +416,7 @@ CREATE TABLE "reference"."courthouses" (
 	"abbreviation" text,
 	"state_id" integer,
 	"created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT (now() AT TIME ZONE 'utc'::text) NOT NULL,
-	CONSTRAINT "courthouses_city_id_unique" UNIQUE("city_id"),
-	CONSTRAINT "courthouses_law_branch_id_unique" UNIQUE("law_branch_id"),
-	CONSTRAINT "courthouses_jurisdiction_id_unique" UNIQUE("jurisdiction_id"),
-	CONSTRAINT "courthouses_state_id_unique" UNIQUE("state_id")
+	"updated_at" timestamp with time zone DEFAULT (now() AT TIME ZONE 'utc'::text) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "reference"."trial_stages" (

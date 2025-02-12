@@ -97,12 +97,8 @@ export const cases = mainSchema.table("cases", {
     // Audit Trail
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
-    createdBy: uuid('created_by')
-        .notNull()
-        .references(() => users.id),
-    updatedBy: uuid('updated_by')
-        .notNull()
-        .references(() => users.id),
+    createdBy: uuid('created_by').notNull().references(() => users.id),
+    updatedBy: uuid('updated_by').notNull().references(() => users.id),
     version: integer('version').default(1),
     deletedAt: timestamp('deleted_at')
 });

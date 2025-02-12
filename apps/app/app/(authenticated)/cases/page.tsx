@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@repo/design-system/components/ui/dialog';
+import { Header } from '../components/header';
 
 export default function CasesPage() {
   const { data: cases, isLoading, error } = useCases();
@@ -38,6 +39,7 @@ export default function CasesPage() {
 
   return (
     <div>
+      <Header pages={[]} page="Cases" />
       <h1 className="text-2xl font-bold mb-4">Cases</h1>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

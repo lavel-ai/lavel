@@ -1787,6 +1787,213 @@ for the parent id, i input 1 since it would be the first record not sure what to
 
 _**Assistant**_
 
+I'll help you add the courthouses seeding to our existing script. First, let me check the courthouse schema to understand its structure.
+
+---
+
+_****_
+
+Read file: packages/database/src/tenant-app/schema/reference/courthouses-schema.ts
+
+---
+
+_****_
+
+
+
+
+
+
+
+Now I'll update our seeding script to include the courthouses. I'll add the type and seeding function:
+
+---
+
+_****_
+
+```diff
+  import postgres from 'postgres';
+  import * as schema from '../schema/reference';
+- import { states, cities, lawBranches, jurisdictions, trialStages, trialTypes, trialStagesTypes } from '../schema/reference';
++ import { states, cities, lawBranches, jurisdictions, trialStages, trialTypes, trialStagesTypes, courthouses } from '../schema/reference';
+  import { InferInsertModel } from 'drizzle-orm';
+  import { eq, and } from 'drizzle-orm';
+  type TrialTypeInsert = InferInsertModel<typeof trialTypes>;
+  type TrialStageTypeInsert = InferInsertModel<typeof trialStagesTypes>;
++ type CourthouseInsert = InferInsertModel<typeof courthouses>;
+  
+  // Store IDs for relationships
+  const trialStageIds: IdMap = {};
+  const trialTypeIds: IdMap = {};
++ const courthouseIds: IdMap = {};
+  
+  // Get the database URL from environment variables
+    }
+  }
++ 
++ async function seedCourthouses() {
++   console.log('Seeding courthouses...');
++   const courthousesData = loadCsvData('courthouses.csv');
++   
++   for (const courthouseData of courthousesData) {
++     try {
++       const stateName = courthouseData.state.toLowerCase();
++       const cityName = courthouseData.city.toLowerCase();
++       const lawBranchName = courthouseData.law_branch.toLowerCase();
++       const jurisdictionName = courthouseData.jurisdiction.toLowerCase();
++       
++       const stateId = stateIds[stateName];
++       const cityId = cityIds[cityName];
++       const lawBranchId = lawBranchIds[lawBranchName];
++       const jurisdictionId = jurisdictionIds[jurisdictionName];
++       
++       if (!stateId || !cityId || !lawBranchId || !jurisdictionId) {
++         console.error(`Missing reference for courthouse ${courthouseData.name}:`, {
++           state: stateName,
++           city: cityName,
++           lawBranch: lawBranchName,
++           jurisdiction: jurisdictionName,
++         });
++         continue;
++       }
++       
++       const courthouse: CourthouseInsert = {
++         name: courthouseData.name.toLowerCase(),
++         stateId,
++         cityId,
++         lawBranchId,
++         jurisdictionId,
++         parentId: courthouseData.parent_id ? parseInt(courthouseData.parent_id) : null,
++       };
++       
++       const existingCourthouse = await db.select().from(courthouses).where(eq(courthouses.name, courthouse.name));
++       
++       if (existingCourthouse.length === 0) {
++         const [inserted] = await db.insert(courthouses).values(courthouse).returning();
++         courthouseIds[courthouse.name] = inserted.id;
++         console.log(`Inserted courthouse: ${courthouse.name}`);
++       } else {
++         // Update the courthouse if any references have changed
++         await db.update(courthouses)
++           .set({
++             stateId,
++             cityId,
++             lawBranchId,
++             jurisdictionId,
++             parentId: courthouse.parentId,
++           })
++           .where(eq(courthouses.id, existingCourthouse[0].id));
++         courthouseIds[courthouse.name] = existingCourthouse[0].id;
++         console.log(`Updated courthouse: ${courthouse.name}`);
++       }
++     } catch (error) {
++       console.error(`Error seeding courthouse ${courthouseData.name}:`, error);
++     }
++   }
++ }
+  
+  async function seed() {
+      await seedTrialTypes();
+      await seedTrialStagesTypes();
++     await seedCourthouses();
+      
+      console.log('Seeding complete!');
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+I've updated the seeding script to include courthouses. Here's what I've added:
+
+1. Added the `CourthouseInsert` type
+2. Added a `courthouseIds` map to store courthouse IDs
+3. Added the `seedCourthouses` function that:
+   - Loads courthouse data from CSV
+   - Looks up all required references (state, city, law branch, jurisdiction)
+   - Creates or updates courthouse records
+   - Handles parent-child relationships
+   - Maintains proper foreign key relationships
+
+The script will now:
+1. First seed all the base tables (states, cities, law branches, jurisdictions)
+2. Then seed the trial-related tables
+3. Finally seed the courthouses which depend on all the previous tables
+
+For the parent-child relationship:
+- The first record (poder judicial de la federación) will have no parent (null)
+- All other records will have parent_id = 1 (as specified in your CSV)
+
+Would you like me to run the updated script to seed the courthouses?
+
+---
+
+_**User**_
+
+ok we are almost there we did got this error for the courthouses, we where only able to seed the first record not the rest of them 
+
+  severity_local: 'ERROR',
+  severity: 'ERROR',
+  code: '23505',
+  detail: 'Key (jurisdiction_id)=(1) already exists.',
+  schema_name: 'reference',
+  table_name: 'courthouses',
+  constraint_name: 'courthouses_jurisdiction_id_unique',
+  file: 'nbtinsert.c',
+  line: '666',
+  routine: '_bt_check_unique'
+}
+
+---
+
+_**Assistant**_
+
+
+
+Ah, I see the issue! Looking at the courthouse schema, we have unique constraints on several fields that shouldn't be unique:
+
+```typescript
+cityId: integer("city_id").unique(),
+lawBranchId: integer("law_branch_id").unique(),
+jurisdictionId: integer("jurisdiction_id").unique(),
+stateId: integer("state_id").unique(),
+```
+
+These unique constraints mean that each city, law branch, jurisdiction, and state can only be associated with one courthouse, which is not what we want. Multiple courthouses can be in the same city, have the same law branch, etc.
+
+Let me fix this by updating the courthouse schema first:
+
+---
+
+_****_
+
+```diff
+  	contactInfo: jsonb("contact_info"),
+  	judicialDistrict: text("judicial_district"),
+- 	cityId: integer("city_id").unique(),
+- 	lawBranchId: integer("law_branch_id").unique(),
++ 	cityId: integer("city_id"),
++ 	lawBranchId: integer("law_branch_id"),
+  	parentId: integer("parent_id"),
+- 	jurisdictionId: integer("jurisdiction_id").unique(),
++ 	jurisdictionId: integer("jurisdiction_id"),
+  	abbreviation: text("abbreviation"),
+- 	stateId: integer("state_id").unique(),
++ 	stateId: integer("state_id"),
+  	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+```
+
+---
+
+_****_
+
 
 
 ---

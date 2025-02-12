@@ -1,6 +1,6 @@
 // packages/database/src/tenant-app/queries/cases-queries.ts
 import { cases, Case, CaseInsert, combinedSchema } from '../schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 /**
@@ -58,6 +58,23 @@ export async function deleteCase(
   caseId: string
 ): Promise<void> {
   await tenantDb.delete(cases).where(eq(cases.id, caseId)).execute();
+}
+
+export async function getAdvisoryCasesCount(
+  tenantDb: PostgresJsDatabase<typeof combinedSchema>
+): Promise<number> {
+  const result = await tenantDb
+    .select({ count: sql<number>`count(*)` })
+    .from(cases)
+    .where(
+      and(
+        eq(cases.type, 'advisory'),
+        eq(cases.isActive, true)
+      )
+    )
+    .execute();
+  
+  return result[0].count;
 }
 
 

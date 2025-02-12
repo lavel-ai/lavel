@@ -20,7 +20,7 @@ import {
 } from '@repo/design-system/components/ui/sidebar';
 import { cn } from '@repo/design-system/lib/utils';
 import { NotificationsTrigger } from '@repo/notifications/components/trigger';
-import { Building, LayoutDashboard, Scale, TextSearch } from 'lucide-react';
+import { Building, FileText, LayoutDashboard, Scale, TextSearch } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Search } from './search';
 
@@ -37,18 +37,23 @@ const data = {
   navMain: [
     {
       title: 'Dashboard',
-      url: '#',
+      url: '/',
       icon: LayoutDashboard,
       isActive: true,
     },
     {
       title: 'Clientes',
-      url: '#',
+      url: '/customers',
       icon: Building,
     },
     {
+      title: 'Casos',
+      url: '/cases',
+      icon: FileText,
+    },
+    {
       title: 'Investigación',
-      url: '#',
+      url: '/research',
       icon: TextSearch,
     },
     {

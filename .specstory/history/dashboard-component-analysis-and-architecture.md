@@ -1,0 +1,1748 @@
+## SpecStory
+
+## Dashboard Component Analysis and Architecture (2/12/2025, 12:42:36 PM)
+
+_**User**_
+
+we need to make an analysis of the components designed in the @components the ui directory are the ones from shadcn no need to make analysis here. we need to focus on the components that make the dashboard page @page.tsx 
+
+We are going to copy this and implement in our app, but first we need to understand what we need to copy and how to implement for our use case, following our rules for access to the db. @data-flow.mdc 
+
+Since this dashboard has components that we can reuse across our app i would like to have a clear understanding of how to architect and where to save the components. My guess would be as we do components for each page we create we would store them there, eg. @cases in cases we would store all the components related to cases. or not sure if we need to have them in another architecture. 
+
+---
+
+_**Assistant**_
+
+I'll help you analyze the dashboard components and provide guidance on how to structure them according to your data flow rules. Let me first examine the components and their purposes.
+
+Let me analyze the components used in the dashboard:
+
+---
+
+_****_
+
+Read file: apps/lawyer-dashboard/components/notifications.tsx
+
+---
+
+_****_
+
+
+
+Let me analyze the other key components:
+
+---
+
+_****_
+
+Read file: apps/lawyer-dashboard/components/active-tasks.tsx
+
+---
+
+_****_
+
+
+
+Based on my analysis of the components and the data-flow rules, here's a comprehensive breakdown:
+
+1. **Component Analysis**
+
+The dashboard consists of several key components:
+- `Notifications`: Displays user notifications with animations
+- `ActiveTasks`: Shows prioritized tasks with status badges
+- `UpcomingEvents`: Calendar events display
+- `CaseStatusGraph`: Visualization of case statuses
+- `KPICards`: Key performance indicators
+- `DraggableCard`: A wrapper for making components draggable
+
+2. **Architectural Recommendations**
+
+Based on your data flow rules, I recommend the following structure:
+
+```
+apps/app/
+├── components/
+│   ├── shared/               # Reusable components across pages
+│   │   ├── cards/           # Base card components
+│   │   └── charts/          # Reusable chart components
+│   │
+│   ├── dashboard/           # Dashboard-specific components
+│   │   ├── notifications/
+│   │   ├── active-tasks/
+│   │   └── kpi-cards/
+│   │
+│   └── cases/              # Case-specific components
+│       ├── case-list/
+│       ├── case-details/
+│       └── case-status/
+```
+
+3. **Implementation Strategy Following Data-Flow Rules**
+
+For each component that needs data, implement the following layers:
+
+a) **Database Queries** (in `packages/database/src/tenant-app/queries/`):
+```typescript
+// dashboard-queries.ts
+export async function getActiveTasksForTenant(tenantDb: DrizzleClient) {
+  return tenantDb.select().from(tasks).where(eq(tasks.status, 'active'));
+}
+
+export async function getNotificationsForTenant(tenantDb: DrizzleClient) {
+  return tenantDb.select().from(notifications).orderBy(desc(notifications.createdAt));
+}
+```
+
+b) **Server Actions** (in `apps/app/actions/`):
+```typescript
+// dashboard-actions.ts
+export async function getActiveTasks(request: NextRequest) {
+  try {
+    const tenantDb = await getTenantDbClient(request);
+    const tasks = await getActiveTasksForTenant(tenantDb);
+    return { status: 'success', message: 'Tasks retrieved', data: tasks };
+  } catch (error) {
+    return { status: 'error', message: 'Failed to fetch tasks' };
+  }
+}
+```
+
+c) **React Query Hooks** (in `apps/app/hooks/`):
+```typescript
+// use-dashboard-data.ts
+export function useActiveTasks() {
+  return useQuery({
+    queryKey: ['active-tasks'],
+    queryFn: () => fetch('/api/dashboard/tasks').then(res => res.json())
+  });
+}
+```
+
+d) **Components** (in appropriate directories):
+```typescript
+// components/dashboard/active-tasks/active-tasks.tsx
+export function ActiveTasks() {
+  const { data, isLoading } = useActiveTasks();
+  
+  if (isLoading) return <LoadingSpinner />;
+  
+  return (
+    <AnimatedCard>
+      {/* Component implementation */}
+    </AnimatedCard>
+  );
+}
+```
+
+4. **Component Organization Strategy**
+
+I recommend the following approach:
+
+1. **Shared Components**: Keep truly reusable components in `components/shared/`
+   - Card layouts
+   - Chart components
+   - Data tables
+
+2. **Feature-Specific Components**: Keep components specific to a feature in their respective feature directories
+   - `components/cases/` for case-related components
+   - `components/dashboard/` for dashboard-specific components
+
+3. **Page-Level Components**: For components that are only used on one page, keep them in the page directory
+   - `app/(authenticated)/cases/components/`
+   - `app/(authenticated)/dashboard/components/`
+
+5. **Implementation Steps**
+
+1. First, create the base structure for your queries and actions
+2. Implement the React Query hooks for data fetching
+3. Create the shared components that will be reused
+4. Implement the feature-specific components
+5. Finally, assemble the page using these components
+
+This structure follows your data-flow rules while maintaining a clean separation of concerns and making components reusable where appropriate. The key is to ensure that data access follows the tenant-specific pattern outlined in your rules, while keeping the UI components focused on presentation and user interaction.
+
+Would you like me to dive deeper into any particular aspect of this architecture or show more detailed examples of any component implementation?
+
+---
+
+_**User**_
+
+this is great perfect analysis, now lets create our frst component for the dasbhoard we will create a kpi for the total amount of cases of type advisory. 
+
+we already have in place some queries, i want to centralize queries by table not by component i think this makes more sense and would actually help in organize and reuse code. 
+
+@case-schema.ts @cases-queries.ts 
+
+for the actions not sure if i should also store them in teh database repo or they should go in the app repo where i currently have them. @actions.ts help me determine this. 
+
+In order to get the total amount of cases type advisory we would have to do some mutations to the data, we need to count all cases that the stauts is active and are advisory. how do we do this, is this something we need to do at the database level or it has to be done with the actions? 
+
+
+
+---
+
+_**Assistant**_
+
+I'll help you create the KPI component for advisory cases and address your architectural questions.
+
+First, let's address the architectural decisions:
+
+1. **Query Organization**: Your approach of organizing queries by table/entity (like `cases-queries.ts`) rather than by component is correct. This promotes reusability and maintains a clear separation of concerns.
+
+2. **Actions Location**: Based on your data-flow rules and the current structure, I recommend keeping the actions in the app repo (`apps/app`) because:
+   - Actions are Next.js server actions that are tightly coupled with the web framework
+   - They handle web-specific concerns like `NextRequest`, path revalidation, and redirects
+   - They act as the bridge between your web app and the database layer
+
+Now, for implementing the advisory cases KPI:
+
+1. First, let's add a new query in `cases-queries.ts` to get the count at the database level (this is more efficient than fetching all cases and counting in the application):
+
+```typescript:packages/database/src/tenant-app/queries/cases-queries.ts
+// packages/database/src/tenant-app/queries/cases-queries.ts
+
+export async function getAdvisoryCasesCount(
+  tenantDb: PostgresJsDatabase<typeof combinedSchema>
+): Promise<number> {
+  const result = await tenantDb
+    .select({ count: sql<number>`count(*)` })
+    .from(cases)
+    .where(
+      and(
+        eq(cases.type, 'advisory'),
+        eq(cases.isActive, true)
+      )
+    )
+    .execute();
+  
+  return result[0].count;
+}
+```
+
+2. Let's create a corresponding action:
+
+```typescript
+// apps/app/app/(authenticated)/dashboard/actions.ts
+import { getAdvisoryCasesCount } from '@repo/database/src/tenant-app/queries/cases-queries';
+
+export async function getAdvisoryCasesKPI(request: NextRequest) {
+  try {
+    const tenantDb = await getTenantDbClient(request);
+    const count = await getAdvisoryCasesCount(tenantDb);
+    return { 
+      status: 'success', 
+      data: { count },
+      message: 'Advisory cases count retrieved successfully' 
+    };
+  } catch (error) {
+    console.error('Error fetching advisory cases count:', error);
+    return { 
+      status: 'error', 
+      message: 'Failed to fetch advisory cases count' 
+    };
+  }
+}
+```
+
+3. Create a React Query hook:
+
+```typescript
+// apps/app/app/(authenticated)/dashboard/hooks/use-dashboard-data.ts
+import { useQuery } from '@tanstack/react-query';
+
+export function useAdvisoryCasesCount() {
+  return useQuery({
+    queryKey: ['advisory-cases-count'],
+    queryFn: async () => {
+      const response = await fetch('/api/dashboard/advisory-cases-count');
+      const data = await response.json();
+      if (data.status === 'error') throw new Error(data.message);
+      return data.data.count;
+    }
+  });
+}
+```
+
+4. Create the API route:
+
+```typescript
+// apps/app/app/api/dashboard/advisory-cases-count/route.ts
+import { getAdvisoryCasesKPI } from '@/app/(authenticated)/dashboard/actions';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(request: NextRequest) {
+  try {
+    const response = await getAdvisoryCasesKPI(request);
+    return NextResponse.json(response);
+  } catch (error) {
+    return NextResponse.json(
+      { status: 'error', message: 'Failed to fetch advisory cases count' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+5. Finally, create the KPI component:
+
+```typescript
+// apps/app/app/(authenticated)/dashboard/components/kpi/advisory-cases-kpi.tsx
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAdvisoryCasesCount } from "../../hooks/use-dashboard-data";
+import { Scale } from "lucide-react"; // or any other appropriate icon
+
+export function AdvisoryCasesKPI() {
+  const { data: count, isLoading, error } = useAdvisoryCasesCount();
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">
+          Advisory Cases
+        </CardTitle>
+        <Scale className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-2xl font-bold">Loading...</div>
+        ) : error ? (
+          <div className="text-sm text-red-500">Failed to load</div>
+        ) : (
+          <>
+            <div className="text-2xl font-bold">{count}</div>
+            <p className="text-xs text-muted-foreground">
+              Active advisory cases
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+This implementation follows your data-flow rules and provides several benefits:
+
+1. **Database-Level Aggregation**: By counting at the database level, we reduce data transfer and improve performance
+2. **Clean Separation of Concerns**:
+   - Queries handle database operations
+   - Actions handle web framework specifics
+   - Components handle presentation
+3. **Type Safety**: Throughout the entire flow
+4. **Caching**: Through React Query
+5. **Error Handling**: At every layer
+
+To use this KPI in your dashboard:
+
+```typescript
+// apps/app/app/(authenticated)/dashboard/page.tsx
+import { AdvisoryCasesKPI } from "./components/kpi/advisory-cases-kpi";
+
+export default function DashboardPage() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <AdvisoryCasesKPI />
+      {/* Other KPIs */}
+    </div>
+  );
+}
+```
+
+Would you like me to explain any part of this implementation in more detail or help you implement additional KPIs?
+
+---
+
+_**User**_
+
+one question i have is for example all the actions reggarding the dashboard would be in the same file, regardless of the table they are performing the function? i ask this because ium thinking in reusability we might use actions from the dashboard in other parts of our app. 
+
+for the api i guess this one it really answers itself we do just want to do things about the dashboard right? 
+so for example if we have another to fetch the events would it be stored in the same route? 
+
+---
+
+_**Assistant**_
+
+Great questions about organizing actions and API routes! Let me help clarify the best practices:
+
+For Actions:
+I recommend organizing actions based on the domain/entity they operate on, not by the page/component where they're used. Here's why:
+
+1. **Domain-Centric Organization**:
+```typescript
+// apps/app/actions/cases.ts
+export async function getAdvisoryCasesKPI(request: NextRequest) { ... }
+export async function getCasesByStatus(request: NextRequest, status: string) { ... }
+```
+
+```typescript
+// apps/app/actions/events.ts
+export async function getUpcomingEvents(request: NextRequest) { ... }
+export async function getEventsByDate(request: NextRequest, date: Date) { ... }
+```
+
+This approach:
+- Makes actions more discoverable
+- Promotes reusability across different pages/components
+- Keeps related business logic together
+- Makes it easier to maintain and test
+
+For API Routes:
+For API routes, you have two main options:
+
+1. **Route per Feature**:
+```
+/api/dashboard/
+  ├── cases/
+  │   ├── advisory/route.ts
+  │   └── status/route.ts
+  ├── events/
+  │   ├── upcoming/route.ts
+  │   └── by-date/route.ts
+  └── stats/
+      └── route.ts
+```
+
+2. **Consolidated Dashboard Route**:
+```typescript
+// /api/dashboard/route.ts
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const type = searchParams.get('type');
+
+  switch (type) {
+    case 'advisory-cases':
+      return handleAdvisoryCases(request);
+    case 'upcoming-events':
+      return handleUpcomingEvents(request);
+    default:
+      return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+  }
+}
+```
+
+My recommendation:
+1. **For Actions**: Organize by domain/entity in an `actions` directory:
+```
+apps/app/
+├── actions/
+│   ├── cases.ts       # All case-related actions
+│   ├── events.ts      # All event-related actions
+│   └── dashboard.ts   # Dashboard-specific aggregations
+```
+
+2. **For API Routes**: Use separate routes for different features:
+```
+apps/app/api/
+├── cases/
+│   └── route.ts
+├── events/
+│   └── route.ts
+└── dashboard/
+    ├── cases/
+    │   └── route.ts    # Dashboard-specific case endpoints
+    └── events/
+        └── route.ts    # Dashboard-specific event endpoints
+```
+
+This structure:
+- Makes it clear where to find specific functionality
+- Allows for better caching strategies
+- Makes it easier to handle different rate limits or authentication requirements per endpoint
+- Provides cleaner error handling
+
+Example implementation:
+
+```typescript
+// apps/app/actions/cases.ts
+export async function getAdvisoryCasesKPI(request: NextRequest) {
+  // Implementation
+}
+
+// apps/app/actions/events.ts
+export async function getUpcomingEvents(request: NextRequest) {
+  // Implementation
+}
+
+// apps/app/api/dashboard/cases/route.ts
+import { getAdvisoryCasesKPI } from '@/actions/cases';
+
+export async function GET(request: NextRequest) {
+  return NextResponse.json(await getAdvisoryCasesKPI(request));
+}
+
+// apps/app/api/dashboard/events/route.ts
+import { getUpcomingEvents } from '@/actions/events';
+
+export async function GET(request: NextRequest) {
+  return NextResponse.json(await getUpcomingEvents(request));
+}
+```
+
+This way:
+1. Your actions are reusable across different parts of the application
+2. API routes are organized by feature but can reuse the same actions
+3. You maintain a clear separation between business logic (actions) and API endpoints
+4. You can easily add new endpoints without affecting existing ones
+5. You can implement different caching strategies per endpoint
+
+Would you like me to show you how to refactor your current implementation to follow this structure?
+
+---
+
+_**User**_
+
+ok perfect this does makes more sense and im happy we tackled it, now something i have doubt about is if we set the api outside the (authenticated) route could this actually break our flow of data ? 
+
+and also explain me how does this routes work, do we set multiple get endpoints, as of now i can @route.ts i can see that we have one for retrieving all cases, do we need to create one specific for retrieving the advisory cases ? 
+
+---
+
+_**Assistant**_
+
+
+
+Great questions about API route organization and authentication! Let me address both concerns:
+
+1. **API Routes and Authentication**:
+You're right to be concerned! The API routes should definitely be inside the `(authenticated)` group to maintain the authentication flow. Here's why:
+
+- Routes inside `(authenticated)` inherit the authentication middleware and checks
+- Moving them outside would bypass these security measures
+- The current structure ensures all API calls go through proper authentication
+
+So the structure should be:
+```
+apps/app/
+└── app/
+    └── (authenticated)/
+        ├── api/
+        │   ├── cases/
+        │   │   └── route.ts
+        │   └── dashboard/
+        │       └── route.ts
+        └── cases/
+            └── page.tsx
+```
+
+2. **API Route Handling**:
+For the routes, you have two options for handling multiple endpoints:
+
+Option 1: **Single route.ts with query parameters**
+```typescript
+// app/(authenticated)/api/cases/route.ts
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const type = searchParams.get('type');
+
+  try {
+    switch (type) {
+      case 'advisory':
+        const advisoryCases = await getAdvisoryCasesKPI(request);
+        return NextResponse.json(advisoryCases);
+      
+      case 'all':
+      default:
+        const allCases = await getCases(request);
+        return NextResponse.json(allCases);
+    }
+  } catch (error) {
+    console.error('Error fetching cases:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch cases' }, 
+      { status: 500 }
+    );
+  }
+}
+```
+
+Usage:
+```typescript
+// Fetch all cases
+fetch('/api/cases')
+// Fetch advisory cases
+fetch('/api/cases?type=advisory')
+```
+
+Option 2: **Separate route files using Next.js route segments**
+```typescript
+// app/(authenticated)/api/cases/advisory/route.ts
+export async function GET(request: NextRequest) {
+  try {
+    const advisoryCases = await getAdvisoryCasesKPI(request);
+    return NextResponse.json(advisoryCases);
+  } catch (error) {
+    console.error('Error fetching advisory cases:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch advisory cases' }, 
+      { status: 500 }
+    );
+  }
+}
+
+// app/(authenticated)/api/cases/route.ts (existing all cases endpoint)
+export async function GET(request: NextRequest) {
+  try {
+    const cases = await getCases(request);
+    return NextResponse.json(cases);
+  } catch (error) {
+    console.error('Error fetching cases:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch cases' }, 
+      { status: 500 }
+    );
+  }
+}
+```
+
+Usage:
+```typescript
+// Fetch all cases
+fetch('/api/cases')
+// Fetch advisory cases
+fetch('/api/cases/advisory')
+```
+
+**My Recommendation**:
+For your use case, I recommend Option 2 (separate route files) because:
+
+1. Clearer URL structure
+2. Better separation of concerns
+3. Easier to maintain and test
+4. More scalable as you add more endpoints
+5. Better TypeScript support for each endpoint's specific types
+6. Easier to implement different caching strategies per endpoint
+
+Here's a complete example of how this would look:
+
+```typescript
+// app/(authenticated)/api/cases/advisory/route.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { getAdvisoryCasesKPI } from '@/actions/cases';
+
+export async function GET(request: NextRequest) {
+  try {
+    const result = await getAdvisoryCasesKPI(request);
+    return NextResponse.json({
+      status: 'success',
+      data: result,
+      message: 'Advisory cases retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error fetching advisory cases:', error);
+    return NextResponse.json(
+      { 
+        status: 'error', 
+        message: 'Failed to fetch advisory cases' 
+      }, 
+      { status: 500 }
+    );
+  }
+}
+```
+
+Then in your React Query hook:
+```typescript
+export function useAdvisoryCasesCount() {
+  return useQuery({
+    queryKey: ['advisory-cases-count'],
+    queryFn: async () => {
+      const response = await fetch('/api/cases/advisory');
+      const data = await response.json();
+      if (data.status === 'error') throw new Error(data.message);
+      return data.data;
+    }
+  });
+}
+```
+
+This structure:
+1. Maintains authentication through the `(authenticated)` group
+2. Provides clear, RESTful endpoints
+3. Makes it easy to add new endpoints as needed
+4. Keeps the code organized and maintainable
+
+Would you like me to help you implement this structure for your current endpoints?
+
+---
+
+_**User**_
+
+ok we now have a clear understanding of how to structure our project lets first update the rules @data-flow.mdc
+
+lets also create the first one we discussed
+
+here is the @useCases.ts hook 
+-actions @cases-actions.ts 
+- route @cases 
+- @advisory-cases-kpi.tsx 
+
+---
+
+_**Assistant**_
+
+I'll help you update the data flow rules and implement the advisory cases KPI feature. Let's organize everything properly:
+
+1. First, let's update the data flow rules:
+
+---
+
+_****_
+
+```diff
+    toast.error(error.message);
+  }
++ ```
++ 
++ ## 6. Project Structure
++ 
++ ### Purpose
++ Define a clear and consistent project structure that promotes code reusability and maintainability.
++ 
++ ### Rules
++ 
++ #### Directory Structure
++ ```
++ apps/app/
++ ├── app/
++ │   └── (authenticated)/
++ │       ├── api/           # API routes (protected by auth)
++ │       │   ├── cases/
++ │       │   │   ├── route.ts           # GET /api/cases
++ │       │   │   └── advisory/route.ts  # GET /api/cases/advisory
++ │       │   └── dashboard/
++ │       │       └── route.ts
++ │       └── cases/        # Page components
++ │           └── page.tsx
++ ├── actions/             # Server actions by domain
++ │   ├── cases.ts
++ │   └── events.ts
++ └── hooks/              # React Query hooks by domain
++     ├── cases.ts
++     └── events.ts
++ ```
++ 
++ #### API Routes
++ - Must be placed inside `(authenticated)` group to inherit auth protection
++ - Use separate route files for different endpoints instead of query parameters
++ - Follow RESTful naming conventions
++ - Return standardized response format:
++ ```typescript
++ {
++   status: 'success' | 'error',
++   message: string,
++   data?: any
++ }
++ ```
++ 
++ #### Hooks Organization
++ - Group hooks by domain (e.g., cases.ts, events.ts)
++ - Use React Query for data fetching and caching
++ - Implement proper error handling and loading states
++ - Keep API call logic separate from UI components
++ 
++ ### Example
++ 
++ ```typescript
++ // apps/app/hooks/cases.ts
++ export function useCases() {
++   return useQuery({
++     queryKey: ['cases'],
++     queryFn: fetchCases
++   });
++ }
++ 
++ // apps/app/actions/cases.ts
++ export async function getCases(request: NextRequest) {
++   const tenantDb = await getTenantDbClient(request);
++   return getAllCases(tenantDb);
++ }
++ 
++ // apps/app/(authenticated)/api/cases/route.ts
++ export async function GET(request: NextRequest) {
++   try {
++     const cases = await getCases(request);
++     return NextResponse.json({
++       status: 'success',
++       data: cases,
++       message: 'Cases retrieved successfully'
++     });
++   } catch (error) {
++     return NextResponse.json(
++       { status: 'error', message: 'Failed to fetch cases' },
++       { status: 500 }
++     );
++   }
++ }
+  ```
+  
+```
+
+---
+
+_****_
+
+
+
+Now, let's implement the advisory cases feature following our updated structure:
+
+1. First, let's create the API route:
+
+---
+
+_****_
+
+```diff
+- 
++ import { NextResponse } from 'next/server';
++ import type { NextRequest } from 'next/server';
++ import { getAdvisoryCasesKPI } from '@/actions/cases';
++ 
++ export async function GET(request: NextRequest) {
++   try {
++     const result = await getAdvisoryCasesKPI(request);
++     return NextResponse.json(result);
++   } catch (error) {
++     console.error('Error fetching advisory cases:', error);
++     return NextResponse.json(
++       { 
++         status: 'error', 
++         message: 'Failed to fetch advisory cases count' 
++       }, 
++       { status: 500 }
++     );
++   }
++ } 
+```
+
+---
+
+_****_
+
+
+
+2. Let's update the hooks file:
+
+---
+
+_****_
+
+```diff
+- 
++ import { useQuery } from '@tanstack/react-query';
++ import type { Case } from '@repo/database/src/tenant-app/schema/main/case-schema';
++ 
++ /**
++  * fetchCases is a helper function that calls the API endpoint.
++  * It sends a GET request to /api/cases, and returns the parsed JSON.
++  */
++ async function fetchCases(): Promise<Case[]> {
++   const response = await fetch('/api/cases');
++   if (!response.ok) {
++     throw new Error('Failed to fetch cases');
++   }
++   return response.json();
++ }
++ 
++ /**
++  * useCases is a custom hook that leverages React Query's useQuery hook.
++  * It automatically handles caching, re-fetching, and error handling.
++  */
++ export function useCases() {
++   return useQuery({
++     queryKey: ['cases'],
++     queryFn: fetchCases
++   });
++ }
++ 
++ /**
++  * useAdvisoryCasesCount is a custom hook that fetches the count of active advisory cases.
++  */
++ export function useAdvisoryCasesCount() {
++   return useQuery({
++     queryKey: ['advisory-cases-count'],
++     queryFn: async () => {
++       const response = await fetch('/api/cases/advisory');
++       const data = await response.json();
++       if (data.status === 'error') throw new Error(data.message);
++       return data.data.count;
++     }
++   });
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+3. Let's update the actions file:
+
+---
+
+_****_
+
+```diff
+- 
++ import { getTenantDbClient } from '@/app/utils/tenant-db';
++ import { 
++   getAllCases,
++   getAdvisoryCasesCount 
++ } from '@repo/database/src/tenant-app/queries/cases-queries';
++ import type { NextRequest } from 'next/server';
++ 
++ /**
++  * Retrieves all cases for the current tenant.
++  */
++ export async function getCases(request: NextRequest) {
++   try {
++     const tenantDb = await getTenantDbClient(request);
++     const cases = await getAllCases(tenantDb);
++     return { 
++       status: 'success', 
++       data: cases,
++       message: 'Cases retrieved successfully' 
++     };
++   } catch (error) {
++     console.error('Error fetching cases:', error);
++     return { 
++       status: 'error', 
++       message: 'Failed to fetch cases' 
++     };
++   }
++ }
++ 
++ /**
++  * Retrieves the count of active advisory cases.
++  */
++ export async function getAdvisoryCasesKPI(request: NextRequest) {
++   try {
++     const tenantDb = await getTenantDbClient(request);
++     const count = await getAdvisoryCasesCount(tenantDb);
++     return { 
++       status: 'success', 
++       data: { count },
++       message: 'Advisory cases count retrieved successfully' 
++     };
++   } catch (error) {
++     console.error('Error fetching advisory cases count:', error);
++     return { 
++       status: 'error', 
++       message: 'Failed to fetch advisory cases count' 
++     };
++   }
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+4. Finally, let's update the KPI component:
+
+---
+
+_****_
+
+```diff
+  // apps/app/app/(authenticated)/dashboard/components/kpi/advisory-cases-kpi.tsx
+  import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
+- import { useAdvisoryCasesCount } from "../../hooks/use-dashboard-data";
++ import { useAdvisoryCasesCount } from "@/hooks/cases";
+  import { Scale } from "lucide-react"; // or any other appropriate icon
+  
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+Now we have implemented the advisory cases KPI feature following our updated project structure. Here's what we've done:
+
+1. Updated the data flow rules to include clear guidelines for project structure
+2. Created a dedicated API route for advisory cases count
+3. Organized hooks by domain in a dedicated hooks directory
+4. Centralized actions in a domain-specific file
+5. Updated the KPI component to use the new structure
+
+The new structure provides several benefits:
+- Clear separation of concerns
+- Better code reusability
+- Consistent error handling
+- Type safety throughout the stack
+- Easy to maintain and extend
+
+Would you like me to explain any part of the implementation in more detail or help you implement additional features?
+
+---
+
+_**User**_
+
+getting this error when runing in pnpm dev 
+
+ ⨯ Error: Attempted to call useAdvisoryCasesCount() from the server but useAdvisoryCasesCount is on the client. It's not possible to invoke a client function from the server, it can only be rendered as a Component or passed to props of a Client Component.
+    at <unknown> (apps/app/hooks/useCases.ts/proxy.mjs:3:23)
+    at AdvisoryCasesKPI (apps/app/app/(authenticated)/components/dashboard/advisory-cases-kpi.tsx:7:64)
+  1 | import { registerClientReference } from "react-server-dom-turbopack/server.edge";
+  2 | export const useAdvisoryCasesCount = registerClientReference(
+> 3 |     function() { throw new Error("Attempted to call useAdvisoryCasesCount() from the server but useAdvisoryCasesCount is on the client. It's not possible to invoke a client function from the server, it can only be rendered as a Component or passed to props of a Client Component."); },
+    |                       ^
+  4 |     "[project]/apps/app/hooks/useCases.ts <module evaluation>",
+  5 |     "useAdvisoryCasesCount",
+  6 | ); {
+  digest: '1586457437'
+}
+
+---
+
+_**Assistant**_
+
+Ah, this error occurs because we're trying to use a client-side hook (useAdvisoryCasesCount) in a server component. We need to mark the component that uses React Query hooks as a client component by adding the "use client" directive.
+
+Let's fix the AdvisoryCasesKPI component:
+
+---
+
+_****_
+
+```diff
++ "use client";
++ 
+  // apps/app/app/(authenticated)/dashboard/components/kpi/advisory-cases-kpi.tsx
+  import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
+```
+
+---
+
+_****_
+
+
+
+Also, let's make sure our hooks file is properly set up for client-side usage:
+
+---
+
+_****_
+
+```diff
+- 'use client';
++ "use client";
+  
+  import { useQuery } from '@tanstack/react-query';
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+The error occurred because in Next.js 13+ with the App Router:
+
+1. Components are server components by default
+2. React Query hooks can only be used in client components
+3. Any component using React Query hooks needs to be explicitly marked as a client component with "use client"
+
+The changes we made:
+
+1. Added `"use client"` to the KPI component
+2. Added `"use client"` to the hooks file
+3. Kept the proper import paths and component structure
+
+This should resolve the error because now:
+- The hooks file is properly marked as client-side code
+- The KPI component is marked as a client component
+- The data fetching will happen on the client side through React Query
+
+Remember these rules for Next.js 13+ App Router:
+1. Always add `"use client"` to components that:
+   - Use hooks (useState, useEffect, React Query hooks, etc.)
+   - Use browser APIs
+   - Need interactivity
+2. Keep server components as the default when they only:
+   - Fetch data
+   - Access backend resources
+   - Keep sensitive information
+
+Would you like me to explain anything else about the client/server component architecture or help you with any other components?
+
+---
+
+_**User**_
+
+explain me this error and what we need to do to fix it, its in the @useCases.ts  our hook 
+Error: No QueryClient set, use QueryClientProvider to set one
+
+---
+
+_**Assistant**_
+
+Ah yes! This error occurs because we're using React Query hooks (`useQuery`) but haven't set up the `QueryClientProvider` in our application. React Query needs a `QueryClientProvider` at a higher level in the component tree to manage the query cache and client state.
+
+Let's fix this by adding the `QueryClientProvider` to our root layout. Since we're using Next.js App Router, we should create a provider component and add it to our authenticated layout:
+
+1. First, let's create a provider component:
+
+---
+
+_****_
+
+```diff
+- 
++ "use client";
++ 
++ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
++ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
++ import { useState, type ReactNode } from "react";
++ 
++ export function Providers({ children }: { children: ReactNode }) {
++   const [queryClient] = useState(
++     () =>
++       new QueryClient({
++         defaultOptions: {
++           queries: {
++             staleTime: 60 * 1000, // 1 minute
++             refetchOnWindowFocus: false,
++           },
++         },
++       })
++   );
++ 
++   return (
++     <QueryClientProvider client={queryClient}>
++       {children}
++       <ReactQueryDevtools initialIsOpen={false} />
++     </QueryClientProvider>
++   );
++ } 
+```
+
+---
+
+_****_
+
+
+
+2. Now, let's add this provider to our authenticated layout:
+
+---
+
+_****_
+
+```diff
+  import { redirect } from 'next/navigation';
+  import { headers } from 'next/headers';
++ import { Providers } from "./components/providers";
+  
+  
+  
+    return (
+-     <NotificationsProvider userId={user.id}>
+-       <SidebarProvider>
+-         <GlobalSidebar>
+-            {betaFeature && (
+-             <div className="m-4 rounded-full bg-success p-1.5 text-center text-sm text-success-foreground">
+-               Beta feature now available
+-             </div>
+-           )}
+-           {children}
+-         </GlobalSidebar>
+-         <PostHogIdentifier />
+-       </SidebarProvider>
+-     </NotificationsProvider>
++     <Providers>
++       <NotificationsProvider userId={user.id}>
++         <SidebarProvider>
++           <GlobalSidebar>
++              {betaFeature && (
++               <div className="m-4 rounded-full bg-success p-1.5 text-center text-sm text-success-foreground">
++                 Beta feature now available
++               </div>
++             )}
++             {children}
++           </GlobalSidebar>
++           <PostHogIdentifier />
++         </SidebarProvider>
++       </NotificationsProvider>
++     </Providers>
+    );
+  };
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+The changes we made:
+
+1. Created a new `Providers` component that:
+   - Is marked as a client component with `"use client"`
+   - Creates a `QueryClient` instance with some default options
+   - Wraps children with `QueryClientProvider`
+   - Includes `ReactQueryDevtools` for development
+
+2. Added the `Providers` component to the authenticated layout, wrapping all other providers
+
+The `QueryClient` configuration includes:
+- `staleTime`: How long data is considered fresh (1 minute in this case)
+- `refetchOnWindowFocus`: Disabled automatic refetching when window regains focus
+
+You'll also need to install the dev tools package:
+
+```bash
+pnpm add @tanstack/react-query-devtools -D
+```
+
+This setup provides:
+1. A centralized query cache
+2. Automatic background updates
+3. Dev tools for debugging queries
+4. Consistent data fetching behavior across your app
+
+Now your React Query hooks should work properly because they have access to the `QueryClient` through the provider.
+
+Would you like me to explain any part of the React Query setup in more detail or help you with configuring other options?
+
+---
+
+_**User**_
+
+this is working beatifully this is amazing, thanks, now we need to understand how and where we need to set this provider, we have our @index.tsx where should we actually save this provider for react query, where would it make more sense in our mono repo @README.md 
+
+---
+
+_**Assistant**_
+
+Looking at your monorepo structure and the `@README.md`, I see that you have a well-organized packages structure. The React Query provider should ideally be part of your design system package since:
+
+1. It's a core provider that multiple apps might need
+2. It follows the same pattern as your other providers in `packages/design-system/index.tsx`
+3. It can be configured consistently across your applications
+
+Let's move and integrate the React Query provider into your design system:
+
+1. First, let's move the necessary dependencies to the design system package:
+```bash
+# In packages/design-system
+pnpm add @tanstack/react-query
+pnpm add -D @tanstack/react-query-devtools
+```
+
+2. Let's update your design system provider:
+
+---
+
+_****_
+
+```diff
+  //packages/design-system/index.ts
++ "use client";
++ 
+  import { AnalyticsProvider } from '@repo/analytics';
+  import { AuthProvider } from '@repo/auth/provider';
+  import type { ThemeProviderProps } from 'next-themes';
++ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
++ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
++ import { useState } from "react";
+  import { Toaster } from './components/ui/sonner';
+  import { TooltipProvider } from './components/ui/tooltip';
+    children,
+    ...properties
+- }: DesignSystemProviderProperties) => (
+-   <ThemeProvider {...properties}>
+-     <AuthProvider>
+-       <AnalyticsProvider>
+-         <TooltipProvider>{children}</TooltipProvider>
+-         <Toaster />
+-       </AnalyticsProvider>
+-     </AuthProvider>
+-   </ThemeProvider>
+- );
++ }: DesignSystemProviderProperties) => {
++   const [queryClient] = useState(
++     () =>
++       new QueryClient({
++         defaultOptions: {
++           queries: {
++             staleTime: 60 * 1000, // 1 minute
++             refetchOnWindowFocus: false,
++           },
++         },
++       })
++   );
++ 
++   return (
++     <ThemeProvider {...properties}>
++       <QueryClientProvider client={queryClient}>
++         <AuthProvider>
++           <AnalyticsProvider>
++             <TooltipProvider>{children}</TooltipProvider>
++             <Toaster />
++           </AnalyticsProvider>
++         </AuthProvider>
++         <ReactQueryDevtools initialIsOpen={false} />
++       </QueryClientProvider>
++     </ThemeProvider>
++   );
++ };
+  
+```
+
+---
+
+_****_
+
+
+
+3. Now we can remove the separate Providers component from the authenticated layout since it's now part of the design system:
+
+---
+
+_****_
+
+```diff
+  import { redirect } from 'next/navigation';
+  import { headers } from 'next/headers';
+- import { Providers } from "./components/providers";
+- 
+  
+  type AppLayoutProperties = {
+      return redirectToSignIn();
+    }
+- 
+  
+    // Get hostname to determine if we're on main domain
+    const isMainDomain = hostname === appUrlWithoutProtocol || hostname === 'localhost:3000';
+  
+- 
+    if (isMainDomain) {
+      // Only do organization lookup and redirect on main domain
+        redirect('/onboarding');  // You'll need to create this route
+      }
+-   }else {
++   } else {
+      console.log("NOT on main domain"); // Log when NOT on main domain
+    }
+    const betaFeature = await showBetaFeature();
+  
+- 
+    return (
+-     <Providers>
+      <NotificationsProvider userId={user.id}>
+        <SidebarProvider>
+        </SidebarProvider>
+      </NotificationsProvider>
+-     </Providers>
+    );
+  };
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+This organization makes more sense because:
+
+1. **Centralized Provider Management**: All core providers are now in one place (`packages/design-system`)
+2. **Consistent Configuration**: React Query settings are standardized across your applications
+3. **Better Dependencies Management**: React Query dependencies are managed at the design system level
+4. **Cleaner Application Code**: Your app layouts are simpler and don't need to manage provider state
+5. **Provider Order**: The providers are properly ordered (Theme → Query → Auth → Analytics → UI)
+
+The benefits of this approach:
+
+1. **Reusability**: Any app in your monorepo can use the design system provider and get React Query functionality
+2. **Maintainability**: Configuration changes can be made in one place
+3. **Consistency**: All apps using the design system will have the same React Query behavior
+4. **Development Experience**: React Query DevTools are automatically included
+5. **Type Safety**: Everything is properly typed through the design system package
+
+To use this in any app, you just need to wrap your root layout with the `DesignSystemProvider`:
+
+```typescript
+// apps/app/app/layout.tsx or any other app
+import { DesignSystemProvider } from '@repo/design-system';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <DesignSystemProvider>
+      {children}
+    </DesignSystemProvider>
+  );
+}
+```
+
+Would you like me to help you with any additional configuration or explain any part of this setup in more detail?
+
+---
+
+_**User**_
+
+ok this sounds good however lets separate concerns here and follow the design that the design system has, we will create another file in @react-query.tsx and use it uin the design system not sure if we should rename the function and the file name  
+
+---
+
+_**Assistant**_
+
+Yes, absolutely! Let's follow the design system's pattern of separating providers into their own files. Looking at the existing structure in `packages/design-system/providers/theme.tsx`, we should follow the same pattern.
+
+Let's update the React Query provider:
+
+---
+
+_****_
+
+```diff
+  import { useState, type ReactNode } from "react";
+  
+- export function Providers({ children }: { children: ReactNode }) {
++ type ReactQueryProviderProps = {
++   children: ReactNode;
++ };
++ 
++ export function ReactQueryProvider({ children }: ReactQueryProviderProps) {
+    const [queryClient] = useState(
+      () =>
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+Now, let's update the main design system provider to use our new ReactQueryProvider:
+
+---
+
+_****_
+
+```diff
+  //packages/design-system/index.ts
++ "use client";
++ 
+  import { AnalyticsProvider } from '@repo/analytics';
+  import { AuthProvider } from '@repo/auth/provider';
+  import { TooltipProvider } from './components/ui/tooltip';
+  import { ThemeProvider } from './providers/theme';
+- import { }
++ import { ReactQueryProvider } from './providers/react-query';
+  
+- type DesignSystemProviderProperties = ThemeProviderProps;
++ type DesignSystemProviderProps = ThemeProviderProps;
+  
+  export const DesignSystemProvider = ({
+    children,
+    ...properties
+- }: DesignSystemProviderProperties) => (
++ }: DesignSystemProviderProps) => (
+    <ThemeProvider {...properties}>
++     <ReactQueryProvider>
+        <AuthProvider>
+          <AnalyticsProvider>
+          </AnalyticsProvider>
+        </AuthProvider>
++     </ReactQueryProvider>
+    </ThemeProvider>
+  );
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+The changes we made follow the design system's patterns:
+
+1. **Separate Provider File**:
+   - Created `react-query.tsx` in the providers directory
+   - Named it `ReactQueryProvider` to match the naming convention
+   - Added proper TypeScript types for props
+
+2. **Provider Integration**:
+   - Added ReactQueryProvider to the DesignSystemProvider
+   - Placed it in the correct order in the provider hierarchy
+   - Maintained the client-side directive
+
+3. **Consistent Naming**:
+   - Used `ReactQueryProvider` instead of just `Providers`
+   - Used `ReactQueryProviderProps` for type naming
+   - Renamed `DesignSystemProviderProperties` to `DesignSystemProviderProps` for consistency
+
+To fix the linter errors, you'll need to add the dependencies to the design system package:
+
+```bash
+# In packages/design-system
+pnpm add @tanstack/react-query
+pnpm add -D @tanstack/react-query-devtools
+```
+
+This organization provides several benefits:
+1. Follows the established pattern in your design system
+2. Keeps provider-specific code isolated
+3. Makes it easier to maintain and update React Query configuration
+4. Provides a clean import path for other packages
+5. Maintains consistency with your other providers
+
+Would you like me to help you with anything else, such as:
+1. Adding additional React Query configuration options?
+2. Setting up error boundaries for React Query?
+3. Adding types for the query responses?
+
+---
+
+_**User**_
+
+now that we have this provider do we need to modify our hooks? 
+
+---
+
+_**Assistant**_
+
+No, we don't need to modify our hooks! The beauty of moving the `ReactQueryProvider` to the design system level is that all hooks using React Query will work automatically as long as they're used within a component tree wrapped by the `DesignSystemProvider`.
+
+Let's look at our current hook structure:
+
+```typescript
+// apps/app/hooks/useCases.ts
+"use client";
+
+import { useQuery } from '@tanstack/react-query';
+import type { Case } from '@repo/database/src/tenant-app/schema/main/case-schema';
+
+export function useAdvisoryCasesCount() {
+  return useQuery({
+    queryKey: ['advisory-cases-count'],
+    queryFn: async () => {
+      const response = await fetch('/api/cases/advisory');
+      const data = await response.json();
+      if (data.status === 'error') throw new Error(data.message);
+      return data.data.count;
+    }
+  });
+}
+```
+
+This hook is already correctly structured because:
+
+1. It's marked as `"use client"`
+2. It uses React Query's `useQuery` hook
+3. It has proper error handling
+4. It follows the data flow pattern we established
+
+The only thing we might want to consider is moving the hooks to a more organized structure following our monorepo setup. Here's a suggestion:
+
+1. Create a new package for hooks:
+```bash
+# Create a new package for shared hooks
+mkdir -p packages/hooks/src
+```
+
+2. Move domain-specific hooks there:
+```typescript
+// packages/hooks/src/cases/index.ts
+"use client";
+
+import { useQuery } from '@tanstack/react-query';
+import type { Case } from '@repo/database/src/tenant-app/schema/main/case-schema';
+
+export function useAdvisoryCasesCount() {
+  return useQuery({
+    queryKey: ['advisory-cases-count'],
+    queryFn: async () => {
+      const response = await fetch('/api/cases/advisory');
+      const data = await response.json();
+      if (data.status === 'error') throw new Error(data.message);
+      return data.data.count;
+    }
+  });
+}
+
+export function useCases() {
+  return useQuery({
+    queryKey: ['cases'],
+    queryFn: async () => {
+      const response = await fetch('/api/cases');
+      const data = await response.json();
+      if (data.status === 'error') throw new Error(data.message);
+      return data.data;
+    }
+  });
+}
+```
+
+3. Then in your components, you would import from the hooks package:
+```typescript
+// apps/app/app/(authenticated)/components/dashboard/advisory-cases-kpi.tsx
+"use client";
+
+import { useAdvisoryCasesCount } from '@repo/hooks/cases';
+// ... rest of the imports
+
+export function AdvisoryCasesKPI() {
+  const { data: count, isLoading, error } = useAdvisoryCasesCount();
+  // ... rest of the component
+}
+```
+
+This organization provides several benefits:
+1. Hooks are reusable across different apps in your monorepo
+2. Consistent data fetching patterns
+3. Centralized error handling
+4. Better type sharing
+5. Easier testing
+
+Would you like me to help you:
+1. Set up the hooks package?
+2. Add more sophisticated error handling to the hooks?
+3. Add TypeScript types for the API responses?
+4. Add caching configurations specific to certain queries?
+
+---
+
+_**User**_
+
+yes lets make this change 
+
+---
+
+_**Assistant**_
+
+I'll help you set up the hooks package and move our hooks there. Let's do this step by step:
+
+1. First, let's create the hooks package structure:
+
+---
+
+_****_
+
+```bash
+mkdir -p packages/hooks/src/cases
+```
+
+```
+dmgpro@Mac lavel-t % 
+
+```
+
+---
+
+_****_
+
+
+
+2. Let's create a package.json for our hooks package:
+
+---
+
+_****_
+
+```diff
+- 
++ {
++   "name": "@repo/hooks",
++   "version": "0.0.0",
++   "private": true,
++   "main": "./src/index.ts",
++   "types": "./src/index.ts",
++   "scripts": {
++     "lint": "eslint .",
++     "type-check": "tsc --noEmit"
++   },
++   "dependencies": {
++     "@tanstack/react-query": "^5.0.0",
++     "@repo/database": "workspace:*",
++     "react": "^18.2.0"
++   },
++   "devDependencies": {
++     "@repo/typescript-config": "workspace:*",
++     "@types/react": "^18.2.0",
++     "typescript": "^5.0.0"
++   }
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+3. Create a tsconfig.json for the hooks package:
+
+---
+
+_****_
+
+```diff
+- 
++ {
++   "extends": "@repo/typescript-config/react-library.json",
++   "compilerOptions": {
++     "outDir": "dist"
++   },
++   "include": ["src"],
++   "exclude": ["node_modules"]
++ } 
+```
+
+---
+
+_****_
+
+
+
+---
+
+
+
+---
+

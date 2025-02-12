@@ -12,7 +12,6 @@ import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 
-
 type AppLayoutProperties = {
   readonly children: ReactNode;
 };
@@ -29,13 +28,11 @@ const AppLayout = async ({ children }: AppLayoutProperties) => {
     return redirectToSignIn();
   }
 
-
   // Get hostname to determine if we're on main domain
-    const headersList = await headers();
-    const hostname = headersList.get('host') || '';
-    const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '');
-    const isMainDomain = hostname === appUrlWithoutProtocol || hostname === 'localhost:3000';
-
+  const headersList = await headers();
+  const hostname = headersList.get('host') || '';
+  const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '');
+  const isMainDomain = hostname === appUrlWithoutProtocol || hostname === 'localhost:3000';
 
   if (isMainDomain) {
     // Only do organization lookup and redirect on main domain
@@ -43,26 +40,25 @@ const AppLayout = async ({ children }: AppLayoutProperties) => {
 
     if (orgInfo?.slug) {
       // Redirect to tenant subdomain
-        const protocol = env.NEXT_PUBLIC_APP_URL?.startsWith('https') ? 'https' : 'http';
-        const tenantUrl = `${protocol}://${orgInfo.slug}.${env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '')}`;
-        console.log("Redirecting to:", tenantUrl); //  Log for debugging
-        redirect(tenantUrl);
+      const protocol = env.NEXT_PUBLIC_APP_URL?.startsWith('https') ? 'https' : 'http';
+      const tenantUrl = `${protocol}://${orgInfo.slug}.${env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '')}`;
+      console.log("Redirecting to:", tenantUrl); //  Log for debugging
+      redirect(tenantUrl);
     } else {
       // If no org found, could redirect to onboarding or show error
       console.log("No organization found, redirecting to /onboarding"); // Log for debugging
       redirect('/onboarding');  // You'll need to create this route
     }
-  }else {
+  } else {
     console.log("NOT on main domain"); // Log when NOT on main domain
   }
-    const betaFeature = await showBetaFeature();
-
+  const betaFeature = await showBetaFeature();
 
   return (
     <NotificationsProvider userId={user.id}>
       <SidebarProvider>
         <GlobalSidebar>
-           {betaFeature && (
+          {betaFeature && (
             <div className="m-4 rounded-full bg-success p-1.5 text-center text-sm text-success-foreground">
               Beta feature now available
             </div>

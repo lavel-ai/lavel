@@ -4,7 +4,7 @@ import { Pool, neonConfig } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-serverless';
 import ws from 'ws';
 import { combinedSchema } from './schema';  // This imports your combined schema from index.ts
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
 
 // Supply a WebSocket constructor if running in Node.js.
 neonConfig.webSocketConstructor = ws;
@@ -22,7 +22,7 @@ neonConfig.webSocketConstructor = ws;
  */
 export function createTenantConnection(
   connectionUrl: string
-): PostgresJsDatabase<typeof combinedSchema> {
+): NeonDatabase<typeof combinedSchema> {
   // Create a new pool using the provided connection URL.
   // Under the hood, Neon uses PG Bouncer to efficiently manage these connections.
   const pool = new Pool({ connectionString: connectionUrl });

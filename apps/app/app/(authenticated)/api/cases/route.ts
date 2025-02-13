@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getCases } from '../../cases/actions';
+import { getCases } from '@/app/actions/cases/cases-actions';
 
 /**
  * GET /api/cases

@@ -43,4 +43,19 @@ export function useAdvisoryCasesCount() {
       return data.data.count;
     }
   });
+}
+
+export function useLitigationCasesCount() {
+  return useQuery<number, Error>({
+    queryKey: ['litigation-cases-count'],
+    queryFn: async () => {
+      const response = await fetch('/api/cases/litigation');
+      if (!response.ok) {
+        throw new Error('Failed to fetch litigation cases count');
+      }
+      const data: ApiResponse<{ count: number }> = await response.json();
+      if (data.status === 'error') throw new Error(data.message);
+      return data.data.count;
+    }
+  });
 } 

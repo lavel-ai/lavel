@@ -23,6 +23,8 @@ import { Header } from './components/header';
 import { AdvisoryCasesKPI } from './components/dashboard/advisory-cases-kpi';
 import { DraggableCard } from './components/shared/draggable-card';
 import dynamic from 'next/dynamic';
+import { LitigationCasesKPI } from './components/dashboard/litigation-cases-kpi';
+import { WeeklyTimeKPI } from './components/dashboard/weekly-time-kpi';
 
 const title = 'Acme Inc';
 const description = 'My application.';
@@ -45,6 +47,8 @@ interface DashboardCard {
 
 const initialCards: DashboardCard[] = [
   { id: 'advisory-cases', component: AdvisoryCasesKPI },
+  { id: 'litigation-cases', component: LitigationCasesKPI },
+  { id: 'weekly-time', component: WeeklyTimeKPI },
   // Add other cards here
 ];
 

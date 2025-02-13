@@ -1,5 +1,5 @@
 //packages/design-system/index.ts
-// "use client";
+"use client";
 
 import { AnalyticsProvider } from '@repo/analytics';
 import { AuthProvider } from '@repo/auth/provider';
@@ -19,8 +19,10 @@ export const DesignSystemProvider = ({
     <ReactQueryProvider>
       <AuthProvider>
         <AnalyticsProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster />
+          <TooltipProvider>
+            {children}
+            <Toaster />
+          </TooltipProvider>
         </AnalyticsProvider>
       </AuthProvider>
     </ReactQueryProvider>

@@ -1,5 +1,5 @@
 import type React from "react"
-import { motion } from "framer-motion"
+import { motion } from "motion/react"
 import { Card } from "@repo/design-system/components/ui/card"
 
 interface AnimatedCardProps {

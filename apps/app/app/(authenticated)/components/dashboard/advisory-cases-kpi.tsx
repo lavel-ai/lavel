@@ -2,7 +2,7 @@
 
 // apps/app/app/(authenticated)/dashboard/components/kpi/advisory-cases-kpi.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
-import { useAdvisoryCasesCount } from "@repo/hooks";
+import { useAdvisoryCasesCount } from "@/app/hook/src";
 import { Scale } from "lucide-react";
 
 export function AdvisoryCasesKPI() {

@@ -1,7 +1,7 @@
 // apps/app/app/(authenticated)/[...catchall]/cases/page.tsx
 'use client';
 
-import { useCases } from '@/hooks/useCases';
+import { useCases } from '@/app/hook/src';
 import { Button } from '@repo/design-system/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@repo/design-system/components/ui/card';
 import {

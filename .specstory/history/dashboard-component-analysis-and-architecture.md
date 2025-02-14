@@ -4572,6 +4572,1176 @@ In our case, using `NeonDatabase` is the right choice because we're likely deplo
 
 ---
 
+_**User**_
+
+we now need to create our tasks component. lets take as inspiration the one from todoist i attach an image of an example this can be wrapped in the card component and also lets take into account that we need to allow to drag the component around. 
+
+here is our table so we create correctly the queries, actions and hook 
+
+@tasks-schema.ts 
+
+---
+
+_**Assistant**_
+
+I'll help you create a Tasks component inspired by Todoist's design. Looking at the image and the tasks schema, let's build this step by step following our data-flow rules.
+
+1. First, let's create the database query:
+
+---
+
+_****_
+
+```diff
+- 
++ import { sql } from 'drizzle-orm';
++ import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
++ import { tasks } from '../schema/main/tasks-schema';
++ import { combinedSchema } from '../schema';
++ import { and, eq, isNull, lt, gte, lte, or } from 'drizzle-orm';
++ 
++ export async function getTodayAndOverdueTasks(
++   tenantDb: NeonDatabase<typeof combinedSchema>,
++   userId: string
++ ) {
++   const now = new Date();
++   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
++   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
++ 
++   const result = await tenantDb
++     .select({
++       id: tasks.id,
++       title: tasks.title,
++       description: tasks.description,
++       status: tasks.status,
++       priority: tasks.priority,
++       dueDate: tasks.dueDate,
++       assignedTo: tasks.assignedTo,
++       assignedBy: tasks.assignedBy,
++       caseId: tasks.caseId,
++     })
++     .from(tasks)
++     .where(
++       and(
++         eq(tasks.assignedTo, userId),
++         eq(tasks.status, 'pending'),
++         or(
++           // Overdue tasks (due date is before today)
++           lt(tasks.dueDate, startOfDay),
++           // Today's tasks
++           and(
++             gte(tasks.dueDate, startOfDay),
++             lte(tasks.dueDate, endOfDay)
++           )
++         )
++       )
++     )
++     .orderBy(tasks.dueDate)
++     .execute();
++ 
++   // Separate overdue and today's tasks
++   const overdueTasks = result.filter(task => 
++     task.dueDate && new Date(task.dueDate) < startOfDay
++   );
++ 
++   const todayTasks = result.filter(task =>
++     task.dueDate && 
++     new Date(task.dueDate) >= startOfDay && 
++     new Date(task.dueDate) <= endOfDay
++   );
++ 
++   return {
++     overdueTasks,
++     todayTasks,
++     totalOverdue: overdueTasks.length,
++     totalToday: todayTasks.length,
++   };
++ } 
+```
+
+---
+
+_****_
+
+
+
+2. Now let's create the server action:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use server';
++ 
++ import { getTenantDbClient } from '@/app/utils/tenant-db';
++ import { getTodayAndOverdueTasks } from '@repo/database/src/tenant-app/queries/tasks-queries';
++ import type { NextRequest } from 'next/server';
++ 
++ export async function getTodayAndOverdueTasksKPI(request: NextRequest, userId: string) {
++   try {
++     const tenantDb = await getTenantDbClient(request);
++     const data = await getTodayAndOverdueTasks(tenantDb, userId);
++     
++     return { 
++       status: 'success', 
++       message: 'Tasks retrieved successfully', 
++       data 
++     };
++   } catch (error) {
++     console.error('Error in getTodayAndOverdueTasksKPI:', error);
++     return { 
++       status: 'error', 
++       message: 'Failed to get tasks' 
++     };
++   }
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+3. Let's create the API route:
+
+---
+
+_****_
+
+```diff
+- 
++ import { NextResponse } from 'next/server';
++ import type { NextRequest } from 'next/server';
++ import { getTodayAndOverdueTasksKPI } from '@/app/actions/tasks/tasks-actions';
++ import { auth } from '@repo/auth/server';
++ 
++ export async function GET(request: NextRequest) {
++   try {
++     const { userId } = await auth();
++     if (!userId) {
++       return NextResponse.json(
++         { status: 'error', message: 'Unauthorized' },
++         { status: 401 }
++       );
++     }
++ 
++     const result = await getTodayAndOverdueTasksKPI(request, userId);
++     return NextResponse.json(result);
++   } catch (error) {
++     console.error('Error fetching tasks:', error);
++     return NextResponse.json(
++       { 
++         status: 'error', 
++         message: 'Failed to fetch tasks' 
++       }, 
++       { status: 500 }
++     );
++   }
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+4. Let's create the React Query hook:
+
+---
+
+_****_
+
+```diff
+- 
++ "use client";
++ 
++ import { useQuery } from "@tanstack/react-query";
++ 
++ interface Task {
++   id: string;
++   title: string;
++   description: string | null;
++   status: string;
++   priority: string;
++   dueDate: string | null;
++   assignedTo: string;
++   assignedBy: string;
++   caseId: string | null;
++ }
++ 
++ interface TasksResponse {
++   overdueTasks: Task[];
++   todayTasks: Task[];
++   totalOverdue: number;
++   totalToday: number;
++ }
++ 
++ export function useTodayTasks() {
++   return useQuery<TasksResponse, Error>({
++     queryKey: ['today-tasks'],
++     queryFn: async () => {
++       const response = await fetch('/api/tasks/today');
++       if (!response.ok) {
++         throw new Error('Failed to fetch tasks');
++       }
++       const data = await response.json();
++       if (data.status === 'error') throw new Error(data.message);
++       return data.data;
++     }
++   });
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+5. Finally, let's create the Tasks KPI component:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use client';
++ 
++ import { useTodayTasks } from '@/app/hook/src/tasks';
++ import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
++ import { ListTodo, AlertCircle, Circle, CheckCircle2 } from 'lucide-react';
++ import { cn } from '@repo/design-system/lib/utils';
++ 
++ interface TaskItemProps {
++   title: string;
++   priority: string;
++   isOverdue?: boolean;
++ }
++ 
++ function TaskItem({ title, priority, isOverdue }: TaskItemProps) {
++   return (
++     <div className={cn(
++       "flex items-center gap-2 py-1",
++       isOverdue && "text-destructive"
++     )}>
++       <Circle className="h-4 w-4 hover:hidden" />
++       <CheckCircle2 className="hidden h-4 w-4 hover:block hover:cursor-pointer" />
++       <span className="flex-1 text-sm">{title}</span>
++       {priority === 'high' && (
++         <span className="h-2 w-2 rounded-full bg-destructive" />
++       )}
++     </div>
++   );
++ }
++ 
++ export function TasksKPI() {
++   const { data, isLoading, error } = useTodayTasks();
++ 
++   return (
++     <Card>
++       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
++         <CardTitle className="text-sm font-medium">Today</CardTitle>
++         <ListTodo className="h-4 w-4 text-muted-foreground" />
++       </CardHeader>
++       <CardContent>
++         {isLoading ? (
++           <div className="text-sm">Loading tasks...</div>
++         ) : error ? (
++           <div className="text-sm text-destructive">Failed to load tasks</div>
++         ) : (
++           <div className="space-y-4">
++             {data?.totalOverdue > 0 && (
++               <div>
++                 <div className="mb-2 flex items-center gap-2 text-sm font-medium text-destructive">
++                   <AlertCircle className="h-4 w-4" />
++                   Overdue
++                 </div>
++                 <div className="space-y-1">
++                   {data.overdueTasks.map(task => (
++                     <TaskItem
++                       key={task.id}
++                       title={task.title}
++                       priority={task.priority}
++                       isOverdue
++                     />
++                   ))}
++                 </div>
++               </div>
++             )}
++             
++             <div>
++               <div className="mb-2 flex items-center gap-2 text-sm font-medium">
++                 <ListTodo className="h-4 w-4" />
++                 Today ({data?.totalToday})
++               </div>
++               <div className="space-y-1">
++                 {data?.todayTasks.map(task => (
++                   <TaskItem
++                     key={task.id}
++                     title={task.title}
++                     priority={task.priority}
++                   />
++                 ))}
++               </div>
++             </div>
++           </div>
++         )}
++       </CardContent>
++     </Card>
++   );
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+Let's fix the TypeScript errors in the Tasks KPI component:
+
+---
+
+_****_
+
+```diff
+  export function TasksKPI() {
+    const { data, isLoading, error } = useTodayTasks();
++ 
++   if (isLoading) {
++     return (
++       <Card>
++         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
++           <CardTitle className="text-sm font-medium">Today</CardTitle>
++           <ListTodo className="h-4 w-4 text-muted-foreground" />
++         </CardHeader>
++         <CardContent>
++           <div className="text-sm">Loading tasks...</div>
++         </CardContent>
++       </Card>
++     );
++   }
++ 
++   if (error) {
++     return (
++       <Card>
++         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
++           <CardTitle className="text-sm font-medium">Today</CardTitle>
++           <ListTodo className="h-4 w-4 text-muted-foreground" />
++         </CardHeader>
++         <CardContent>
++           <div className="text-sm text-destructive">Failed to load tasks</div>
++         </CardContent>
++       </Card>
++     );
++   }
+  
+    return (
+        </CardHeader>
+        <CardContent>
+-         {isLoading ? (
+-           <div className="text-sm">Loading tasks...</div>
+-         ) : error ? (
+-           <div className="text-sm text-destructive">Failed to load tasks</div>
+-         ) : (
+          <div className="space-y-4">
+-             {data?.totalOverdue > 0 && (
++           {data && data.totalOverdue > 0 && (
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-destructive">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <ListTodo className="h-4 w-4" />
+-                 Today ({data?.totalToday})
++               Today ({data?.totalToday ?? 0})
+              </div>
+              <div className="space-y-1">
+            </div>
+          </div>
+-         )}
+        </CardContent>
+      </Card>
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+Now let's add the Tasks KPI to the dashboard:
+
+---
+
+_****_
+
+```diff
+  import { LitigationCasesKPI } from './components/dashboard/litigation-cases-kpi';
+  import { WeeklyTimeKPI } from './components/dashboard/weekly-time-kpi';
++ import { TasksKPI } from './components/dashboard/tasks-kpi';
+  
+  const title = 'Acme Inc';
+    { id: 'litigation-cases', component: LitigationCasesKPI },
+    { id: 'weekly-time', component: WeeklyTimeKPI },
++   { id: 'tasks', component: TasksKPI },
+    // Add other cards here
+  ];
+```
+
+---
+
+_****_
+
+
+
+
+
+The Tasks KPI component features:
+
+1. **Visual Design**:
+   - Clean, minimal design inspired by Todoist
+   - Clear separation between overdue and today's tasks
+   - Priority indicators (red dot for high priority)
+   - Hover states for task completion
+   - Proper spacing and typography
+
+2. **Functionality**:
+   - Shows overdue tasks with red text and warning icon
+   - Shows today's tasks with count
+   - Tasks are ordered by due date
+   - Draggable card (via DraggableCard wrapper)
+   - Loading and error states
+
+3. **Data Flow**:
+   - Database query gets tasks for current user
+   - Server action handles tenant context
+   - API route manages auth and responses
+   - React Query hook handles caching and updates
+   - Component handles display and interactions
+
+4. **Interactions**:
+   - Hover to show completion checkbox
+   - Visual feedback for task priority
+   - Draggable card position
+   - Loading states for better UX
+
+Would you like me to:
+1. Add task completion functionality?
+2. Add task creation capability?
+3. Enhance the priority visualization?
+4. Something else?
+
+---
+
+_**User**_
+
+lets analyze this error step by step. 
+
+explain me the error and then the solution
+
+Error in getTodayAndOverdueTasksKPI: error: invalid input syntax for type uuid: "user_2sdVueZTMcGvLAk1hAsOkPEcR2C"
+    at async getTodayAndOverdueTasks (packages/database/src/tenant-app/queries/tasks-queries.ts:15:17)
+    at async getTodayAndOverdueTasksKPI (apps/app/app/actions/tasks/tasks-actions.ts:10:17)
+    at async GET (apps/app/app/(authenticated)/api/tasks/today/route.ts:16:19)
+  13 |   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  14 |
+> 15 |   const result = await tenantDb
+     |                 ^
+  16 |     .select({
+  17 |       id: tasks.id,
+  18 |       title: tasks.title, {
+  length: 164,
+  severity: 'ERROR',
+  code: '22P02',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: "unnamed portal parameter $1 = '...'",
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'uuid.c',
+  line: '138',
+  routine: 'string_to_uuid'
+}
+
+---
+
+_**Assistant**_
+
+Let's break down this error:
+
+1. **Error Message**: `invalid input syntax for type uuid: "user_2sdVueZTMcGvLAk1hAsOkPEcR2C"`
+
+2. **What's Happening**:
+   - We're getting a Clerk-style user ID (`user_2sdVueZTMcGvLAk1hAsOkPEcR2C`)
+   - We're trying to use it in a query where the `assignedTo` field expects a UUID
+   - PostgreSQL is rejecting it because the format doesn't match UUID syntax
+
+3. **Root Cause**:
+   Looking at our schema:
+```typescript
+export const tasks = mainSchema.table("tasks", {
+  assignedTo: uuid("assigned_to")
+    .references(() => users.id)
+    .notNull(),
+  // ...
+});
+```
+The `assignedTo` field is defined as a UUID that references the users table. However, we're passing a Clerk ID which is in a different format.
+
+4. **The Solution**:
+We need to get the user's database UUID from their Clerk ID before querying tasks. Here's how we fix it:
+
+---
+
+_****_
+
+```diff
+  import { getTodayAndOverdueTasksKPI } from '@/app/actions/tasks/tasks-actions';
+  import { auth } from '@repo/auth/server';
++ import { findUserByClerkId } from '@repo/database/src/tenant-app/queries/users-queries';
++ import { getTenantDbClient } from '@/app/utils/tenant-db';
+  
+  export async function GET(request: NextRequest) {
+    try {
+-     const { userId } = await auth();
+-     if (!userId) {
++     const { userId: clerkUserId } = await auth();
++     if (!clerkUserId) {
+        return NextResponse.json(
+          { status: 'error', message: 'Unauthorized' },
+      }
+  
+-     const result = await getTodayAndOverdueTasksKPI(request, userId);
++     // Get tenant DB connection to find the user
++     const tenantDb = await getTenantDbClient(request);
++     const user = await findUserByClerkId(tenantDb, clerkUserId);
++     
++     if (!user) {
++       return NextResponse.json(
++         { status: 'error', message: 'User not found' },
++         { status: 404 }
++       );
++     }
++ 
++     const result = await getTodayAndOverdueTasksKPI(request, user.id);
+      return NextResponse.json(result);
+    } catch (error) {
+```
+
+---
+
+_****_
+
+
+
+
+
+Now we need to create the users queries in the tenant app:
+
+---
+
+_****_
+
+```diff
+- 
++ import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
++ import { users } from '../schema/main/users-schema';
++ import { combinedSchema } from '../schema';
++ import { eq } from 'drizzle-orm';
++ 
++ export async function findUserByClerkId(
++   tenantDb: NeonDatabase<typeof combinedSchema>,
++   clerkId: string
++ ) {
++   const result = await tenantDb
++     .select()
++     .from(users)
++     .where(eq(users.clerkId, clerkId))
++     .limit(1)
++     .execute();
++ 
++   return result[0];
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+This solution works by:
+
+1. **ID Translation**:
+   - Gets the Clerk ID from auth (`userId: clerkUserId`)
+   - Uses that to find the user in our database
+   - Gets the user's UUID which matches our schema
+
+2. **Type Safety**:
+   - The database expects a UUID for `assignedTo`
+   - We now provide a proper UUID from our users table
+   - This matches the foreign key constraint
+
+3. **Error Handling**:
+   - Checks if user exists in our database
+   - Returns appropriate error messages
+   - Maintains proper error status codes
+
+The flow is now:
+```
+Clerk ID -> Database User ID -> Tasks Query
+```
+
+This ensures we're using the correct ID format throughout our system while maintaining the relationship between Clerk's authentication and our database schema.
+
+Would you like me to:
+1. Add caching for the user lookup to improve performance?
+2. Add more error handling cases?
+3. Add logging for debugging?
+4. Something else?
+
+---
+
+_**User**_
+
+ok before going further and make all this changes, lets first understand our data and our flow. 
+
+We have our main database where we store the information of all the users, and we also have the users table in each database, what should we do about it, should we store the clerk id in teh database as primary key, should we create a new id? should we store both ? whats the best approach? 
+
+---
+
+_**Assistant**_
+
+Ah, excellent question! Let's analyze the user ID strategy across our multi-tenant system:
+
+**Current Setup**:
+1. Main Database:
+```typescript
+// Users table in main database
+users {
+  id: uuid (PK)
+  clerkId: text (unique)
+  // other user info
+}
+```
+
+2. Tenant Databases:
+```typescript
+// Users table in each tenant database
+users {
+  id: uuid (PK)
+  clerkId: text
+  // tenant-specific user info
+}
+```
+
+Let's analyze the approaches:
+
+1. **Using Clerk ID as Primary Key**:
+```typescript
+users {
+  id: text (PK) // Using Clerk ID directly
+  // other fields
+}
+```
+Pros:
+- Direct mapping to auth system
+- No need for ID translation
+Cons:
+- Dependent on external system's ID format
+- Less control over ID format
+- Harder to migrate to different auth provider
+- UUID is more efficient for indexing/joins
+
+2. **Using UUID with Clerk ID Reference** (Current Approach):
+```typescript
+users {
+  id: uuid (PK)
+  clerkId: text (unique)
+  // other fields
+}
+```
+Pros:
+- Independent from auth provider
+- Better performance for joins (UUID)
+- Easier to migrate auth providers
+- Maintains referential integrity
+Cons:
+- Needs ID translation
+- Extra storage for both IDs
+
+3. **Using Only UUID**:
+```typescript
+users {
+  id: uuid (PK)
+  // other fields
+}
+```
+Pros:
+- Simpler schema
+- Better performance
+Cons:
+- Lost connection to auth system
+- Harder to debug auth issues
+- No way to map back to auth provider
+
+**Recommended Approach**:
+I recommend sticking with option 2 (UUID + Clerk ID) because:
+
+1. **Data Sovereignty**:
+   ```typescript
+   // Main database
+   users {
+     id: uuid (PK)
+     clerkId: text (unique)
+     email: text
+     name: text
+     // global user info
+   }
+
+   // Tenant database
+   users {
+     id: uuid (PK) // Same as main database ID
+     clerkId: text (unique)
+     role: text
+     preferences: jsonb
+     // tenant-specific user info
+   }
+   ```
+   - We own our primary keys
+   - We're not dependent on Clerk's ID format
+   - We can easily switch auth providers
+
+2. **Consistent References**:
+   ```typescript
+   // In tenant database
+   tasks {
+     id: uuid
+     assignedTo: uuid // References our UUID, not Clerk ID
+   }
+   ```
+   - All foreign keys use UUID
+   - Better performance for joins
+   - Consistent ID format across tables
+
+3. **Synchronization Strategy**:
+   ```typescript
+   // When user joins a tenant
+   async function addUserToTenant(mainUserId: string, tenantId: string) {
+     const mainUser = await getMainUser(mainUserId);
+     await tenantDb.insert(users).values({
+       id: mainUser.id,        // Keep same UUID
+       clerkId: mainUser.clerkId,  // Keep auth reference
+       // tenant-specific fields
+     });
+   }
+   ```
+   - Same UUID across databases
+   - Maintains auth mapping
+   - Easy to sync user data
+
+4. **Migration Path**:
+   ```typescript
+   // If we need to change auth providers
+   async function migrateToNewAuth(userId: string, newAuthId: string) {
+     await mainDb.update(users)
+       .set({ newAuthId })
+       .where(eq(users.id, userId));
+     // UUID remains unchanged
+   }
+   ```
+   - Can add new auth provider IDs
+   - No need to update foreign keys
+   - Seamless transition
+
+Would you like me to:
+1. Create a migration to ensure this structure?
+2. Add synchronization utilities?
+3. Add user management functions?
+4. Something else?
+
+This way, we maintain flexibility while keeping good database design principles and performance considerations in mind.
+
+---
+
+_**User**_
+
+now that we understand how does this works, how do we need to create our queries? and actions and hook 
+
+---
+
+_**Assistant**_
+
+Let's restructure our queries, actions, and hooks to properly handle the user ID flow. Here's the complete approach:
+
+1. First, let's update our tasks queries to be clearer about ID usage:
+
+---
+
+_****_
+
+```diff
+  import { and, eq, isNull, lt, gte, lte, or } from 'drizzle-orm';
+  
++ /**
++  * Get today's and overdue tasks for a user
++  * @param tenantDb - Tenant database connection
++  * @param dbUserId - User's UUID from the database (not Clerk ID)
++  */
+  export async function getTodayAndOverdueTasks(
+    tenantDb: NeonDatabase<typeof combinedSchema>,
+-   userId: string
++   dbUserId: string
+  ) {
+    const now = new Date();
+      .where(
+        and(
+-         eq(tasks.assignedTo, userId),
++         eq(tasks.assignedTo, dbUserId), // Using database UUID
+          eq(tasks.status, 'pending'),
+          or(
+```
+
+---
+
+_****_
+
+
+
+
+
+2. Now let's update our server action to handle the ID translation:
+
+---
+
+_****_
+
+```diff
+  import { getTenantDbClient } from '@/app/utils/tenant-db';
+  import { getTodayAndOverdueTasks } from '@repo/database/src/tenant-app/queries/tasks-queries';
++ import { findUserByClerkId } from '@repo/database/src/tenant-app/queries/users-queries';
+  import type { NextRequest } from 'next/server';
+  
+- export async function getTodayAndOverdueTasksKPI(request: NextRequest, userId: string) {
++ /**
++  * Get tasks for today's KPI card
++  * Handles translation from Clerk ID to database UUID
++  */
++ export async function getTodayAndOverdueTasksKPI(request: NextRequest, clerkUserId: string) {
+    try {
+      const tenantDb = await getTenantDbClient(request);
+-     const data = await getTodayAndOverdueTasks(tenantDb, userId);
++     
++     // First, get the user's database ID
++     const user = await findUserByClerkId(tenantDb, clerkUserId);
++     if (!user) {
++       return { 
++         status: 'error', 
++         message: 'User not found in tenant database' 
++       };
++     }
++ 
++     // Then get their tasks using the database UUID
++     const tasks = await getTodayAndOverdueTasks(tenantDb, user.id);
+      
+      return { 
+        status: 'success', 
+        message: 'Tasks retrieved successfully', 
+-       data 
++       data: {
++         ...tasks,
++         totalOverdue: tasks.overdueTasks.length,
++         totalToday: tasks.todayTasks.length,
++       }
+      };
+    } catch (error) {
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+3. Finally, let's update our React Query hook to handle the response types properly:
+
+---
+
+_****_
+
+```diff
+    priority: string;
+    dueDate: string | null;
+-   assignedTo: string;
+-   assignedBy: string;
++   assignedTo: string;  // This is a database UUID
++   assignedBy: string;  // This is a database UUID
+    caseId: string | null;
+  }
+  }
+  
++ interface ApiResponse<T> {
++   status: 'success' | 'error';
++   message: string;
++   data: T;
++ }
++ 
++ /**
++  * Hook to fetch today's and overdue tasks
++  * Handles auth and data fetching automatically
++  */
+  export function useTodayTasks() {
+    return useQuery<TasksResponse, Error>({
+          throw new Error('Failed to fetch tasks');
+        }
+-       const data = await response.json();
+-       if (data.status === 'error') throw new Error(data.message);
+-       return data.data;
+-     }
++       const result: ApiResponse<TasksResponse> = await response.json();
++       if (result.status === 'error') {
++         throw new Error(result.message);
++       }
++       return result.data;
++     },
++     staleTime: 1000 * 60 * 5, // Consider data fresh for 5 minutes
+    });
+  } 
+```
+
+---
+
+_****_
+
+
+
+
+
+The flow is now clear and type-safe:
+
+1. **Database Layer** (`tasks-queries.ts`):
+   ```typescript
+   // Uses database UUIDs only
+   function getTodayAndOverdueTasks(tenantDb, dbUserId: string)
+   ```
+
+2. **Server Action** (`tasks-actions.ts`):
+   ```typescript
+   // Handles ID translation
+   async function getTodayAndOverdueTasksKPI(request, clerkUserId: string) {
+     // 1. Get database user
+     const user = await findUserByClerkId(tenantDb, clerkUserId);
+     // 2. Use database UUID for query
+     const tasks = await getTodayAndOverdueTasks(tenantDb, user.id);
+   }
+   ```
+
+3. **API Route** (`route.ts`):
+   ```typescript
+   // Handles auth and passes Clerk ID
+   const { userId: clerkUserId } = await auth();
+   const result = await getTodayAndOverdueTasksKPI(request, clerkUserId);
+   ```
+
+4. **React Query Hook** (`tasks/index.ts`):
+   ```typescript
+   // Handles data fetching and caching
+   function useTodayTasks() {
+     return useQuery<TasksResponse>(['today-tasks'], ...);
+   }
+   ```
+
+Benefits of this approach:
+1. Clear separation of ID types
+2. Type-safe throughout the stack
+3. Proper error handling at each level
+4. Clear documentation of ID usage
+5. Efficient caching with React Query
+
+Would you like me to:
+1. Add more task operations (create, update, delete)?
+2. Add optimistic updates for better UX?
+3. Add error boundaries for the UI?
+4. Something else?
+
+---
+
+_**User**_
+
+ok lets take a step back and analyze our approach for habdliung the users ids since this will be something that we will be using across the app, what options do we have to make this user id available across like a hook or something like that or a provider ? 
+
+---
+
+_**Assistant**_
+
+Ah, excellent point! We can create a more centralized approach to handle user IDs. Here are a few options:
+
+1. **User Context Provider** (Recommended Approach):
+Let's create a provider that handles both Clerk and Database user IDs:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use client';
++ 
++ import { createContext, useContext, useEffect, useState } from 'react';
++ import { useAuth } from '@clerk/nextjs';
++ import { useQuery } from '@tanstack/react-query';
++ 
++ interface UserIds {
++   clerkId: string | null;
++   dbUserId: string | null;
++   isLoading: boolean;
++   error: Error | null;
++ }
++ 
++ const UserContext = createContext<UserIds>({
++   clerkId: null,
++   dbUserId: null,
++   isLoading: true,
++   error: null,
++ });
++ 
++ export function UserProvider({ children }: { children: React.ReactNode }) {
++   const { userId: clerkId, isLoaded: isClerkLoaded } = useAuth();
++   
++   // Query to fetch database user ID
++   const { data: dbUser, isLoading, error } = useQuery({
++     queryKey: ['dbUser', clerkId],
++     queryFn: async () => {
++       if (!clerkId) return null;
++       const response = await fetch('/api/user/db-id');
++       if (!response.ok) throw new Error('Failed to fetch database user');
++       const data = await response.json();
++       return data.data;
++     },
++     enabled: !!clerkId && isClerkLoaded,
++   });
++ 
++   const value = {
++     clerkId: clerkId ?? null,
++     dbUserId: dbUser?.id ?? null,
++     isLoading: !isClerkLoaded || isLoading,
++     error: error as Error | null,
++   };
++ 
++   return (
++     <UserContext.Provider value={value}>
++       {children}
++     </UserContext.Provider>
++   );
++ }
++ 
++ export function useUser() {
++   const context = useContext(UserContext);
++   if (!context) {
++     throw new Error('useUser must be used within a UserProvider');
++   }
++   return context;
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+Now let's create the API endpoint for fetching the database user ID:
+
+---
+
+_****_
+
+```diff
+- 
++ import { NextResponse } from 'next/server';
++ import type { NextRequest } from 'next/server';
++ import { auth } from '@repo/auth/server';
++ import { findUserByClerkId } from '@repo/database/src/tenant-app/queries/users-queries';
++ import { getTenantDbClient } from '@/app/utils/tenant-db';
++ 
++ export async function GET(request: NextRequest) {
++   try {
++     const { userId: clerkUserId } = await auth();
++     if (!clerkUserId) {
++       return NextResponse.json(
++         { status: 'error', message: 'Unauthorized' },
++         { status: 401 }
++       );
++     }
++ 
++     const tenantDb = await getTenantDbClient(request);
++     const user = await findUserByClerkId(tenantDb, clerkUserId);
++     
++     if (!user) {
++       return NextResponse.json(
++         { status: 'error', message: 'User not found' },
++         { status: 404 }
++       );
++     }
++ 
++     return NextResponse.json({
++       status: 'success',
++       message: 'User found',
++       data: {
++         id: user.id,
++         clerkId: user.clerkId
++       }
++     });
++   } catch (error) {
++     console.error('Error fetching user:', error);
++     return NextResponse.json(
++       { status: 'error', message: 'Failed to fetch user' },
++       { status: 500 }
++     );
++   }
++ } 
+```
+
+---
+
+_****_
+
+
+
+---
+
 
 
 ---

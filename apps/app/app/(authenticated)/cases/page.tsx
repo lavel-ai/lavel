@@ -1,7 +1,7 @@
 // apps/app/app/(authenticated)/[...catchall]/cases/page.tsx
 'use client';
 
-import { useCases } from '@/app/hook/src';
+// import { useCases } from '@/app/hook/src';
 import { Button } from '@repo/design-system/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@repo/design-system/components/ui/card';
 import {
@@ -29,13 +29,13 @@ import {
 import { Header } from '../components/header';
 
 export default function CasesPage() {
-  const { data: cases, isLoading, error } = useCases();
+  // const { data: cases, isLoading, error } = useCases();
 //   const { mutate: createCaseMutation, isPending: isCreating } = useCreateCase();
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  if (isLoading) return <div>Loading cases...</div>;
-  if (error) return <div>Error: {error.message}</div>;
+  // if (isLoading) return <div>Loading cases...</div>;
+  // if (error) return <div>Error: {error.message}</div>;
 
   return (
     <div>
@@ -98,7 +98,7 @@ export default function CasesPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {cases?.map((caseItem: Case) => (
+          {/* {cases?.map((caseItem: Case) => (
             <TableRow key={caseItem.id}>
               <TableCell>{caseItem.id}</TableCell>
               <TableCell>{caseItem.title}</TableCell>
@@ -110,7 +110,7 @@ export default function CasesPage() {
                 </Link>
               </TableCell>
             </TableRow>
-          ))}
+          ))} */}
         </TableBody>
       </Table>
     </div>

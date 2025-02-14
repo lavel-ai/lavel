@@ -1,47 +1,37 @@
 // apps/app/app/(authenticated)/dashboard/actions.ts
 import { getTenantDbClient } from '@/app/utils/tenant-db';
-import { getAdvisoryCasesCount, getAllCases, getLitigationCasesCount } from '@repo/database/src/tenant-app/queries/cases-queries';
+import { deleteCase, getAdvisoryCasesCount, getAllCases, getLitigationCasesCount } from '@repo/database/src/tenant-app/queries/cases-queries';
+import { parseError } from '@repo/observability/error';
+import { revalidatePath } from 'next/cache';
 import { NextRequest } from 'next/server';
 
 /**
  * Retrieves all cases for the current tenant.
  */
-export async function getCases(request: NextRequest) {
+export async function getCases(request: NextRequest): Promise<{ status: string; message: string; data?: any }> {
   try {
-    const tenantDb = await getTenantDbClient(request);
+    const tenantDb = await getTenantDbClient(request); //Pass the request
     const cases = await getAllCases(tenantDb);
-    return { 
-      status: 'success', 
-      data: cases,
-      message: 'Cases retrieved successfully' 
-    };
+    return { status: 'success', message: 'Cases retrieved successfully', data: cases };
   } catch (error) {
-    console.error('Error fetching cases:', error);
-    return { 
-      status: 'error', 
-      message: 'Failed to fetch cases' 
-    };
+    console.error('Error in getCases:', error);
+    return { status: 'error', message: 'Failed to fetch cases' };
   }
 }
 
 /**
- * Retrieves the count of active advisory cases.
+ * Deletes a case for the current tenant.
  */
-export async function getAdvisoryCasesKPI(request: NextRequest) {
+export async function deleteCaseAction(request: NextRequest, caseId: string): Promise<{ status: string; message: string }> {
   try {
-    const tenantDb = await getTenantDbClient(request);
-    const count = await getAdvisoryCasesCount(tenantDb);
-    return { 
-      status: 'success', 
-      data: { count },
-      message: 'Advisory cases count retrieved successfully' 
-    };
+    const tenantDb = await getTenantDbClient(request); //Pass the request
+
+    await deleteCase(tenantDb, caseId);
+    revalidatePath('/cases'); // Revalidate the cases page
+    return { status: 'success', message: 'Case deleted successfully' };
   } catch (error) {
-    console.error('Error in getAdvisoryCasesKPI:', error);
-    return { 
-      status: 'error', 
-      message: 'Failed to get advisory cases count' 
-    };
+    const parsedError = parseError(error)
+    return { status: 'error', message: parsedError };
   }
 }
 

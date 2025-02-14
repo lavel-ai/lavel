@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { organizations } from '../../main-app/schema/organizations-schema';
 import { projects } from '../../main-app/schema/projects-schema';
 
-const CACHE_TTL_SECONDS = 60 * 60; // 1 hour cache TTL (adjust as needed)
+const CACHE_TTL_SECONDS = 60 * 60 * 24; // 1 day cache TTL (adjust as needed)
 
 /**
  * Retrieves the tenant database connection URL for a given subdomain.

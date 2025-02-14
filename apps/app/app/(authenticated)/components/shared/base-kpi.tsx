@@ -1,12 +1,5 @@
-'use client';
-
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@repo/design-system/components/ui/card';
-import type { LucideIcon } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
+import { LucideIcon } from "lucide-react";
 
 interface BaseKPIProps {
   title: string;

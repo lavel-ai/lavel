@@ -1,5 +1,5 @@
 // apps/app/app/utils/tenant-db.ts
-
+"use server";
 import type { NextRequest } from 'next/server';
 import { getTenantConnection } from '@repo/database/src/tenant-app/tenant-connection-db';
 import type { DrizzleClient } from '@repo/database/src/tenant-app/tenant-connection-db';

@@ -2,8 +2,8 @@ import { jsonb, text, timestamp, uuid, unique, pgSchema } from "drizzle-orm/pg-c
 import { users } from "./users-schema";
 import { documents } from "./documents-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { mainSchema } from "./main-schema-instance";
 
-export const mainSchema = pgSchema("main");
 
 export const documentSessions = mainSchema.table('document_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),

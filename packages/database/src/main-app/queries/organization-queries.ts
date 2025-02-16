@@ -1,8 +1,8 @@
 // packages/database/src/main-app/queries/organization-queries.ts
 
 import { db } from '../db';
-import { eq, and } from 'drizzle-orm';
-import { organizations, organizationMembers, projects, users } from '../schema';
+import { eq } from 'drizzle-orm';
+import { organizationMembers, users } from '../schema';
 
 export async function fetchUserOrganization(clerkUserId: string): Promise<{ slug: string; connectionUrl: string | null; } | null> {
     try {

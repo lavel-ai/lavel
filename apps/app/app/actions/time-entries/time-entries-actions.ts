@@ -1,12 +1,12 @@
 'use server';
 
-import { getTenantDbClient } from '@/app/utils/tenant-db';
+import { getTenantDbClientUtil } from '@/app/utils/tenant-db';
 import { getWeeklyTimeEntriesForUser } from '@repo/database/src/tenant-app/queries/time-entries-queries';
 import type { NextRequest } from 'next/server';
 
 export async function getWeeklyTimeEntriesKPI(request: NextRequest, userId: string) {
   try {
-    const tenantDb = await getTenantDbClient(request);
+    const tenantDb = await getTenantDbClientUtil();
     const data = await getWeeklyTimeEntriesForUser(tenantDb, userId);
     
     return { 

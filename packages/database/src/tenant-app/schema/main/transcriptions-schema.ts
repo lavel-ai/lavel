@@ -3,8 +3,7 @@ import { cases } from "./case-schema";
 import { relations } from "drizzle-orm";
 import { users } from "./users-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const transcriptions = mainSchema.table('transcriptions', {
     id: uuid('id').defaultRandom().primaryKey(),

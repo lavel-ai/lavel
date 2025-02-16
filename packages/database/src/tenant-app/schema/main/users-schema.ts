@@ -1,7 +1,6 @@
 import { boolean, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const users = mainSchema.table('users', {
   id: uuid('id').primaryKey(),
@@ -13,7 +12,7 @@ export const users = mainSchema.table('users', {
   imageUrl: text('image_url'),
   emailVerified: boolean('email_verified').default(false),
   welcomeEmailSent: boolean('welcome_email_sent').default(false),
-  status: text('status').default('active'),
+  status: boolean('status').default(true),
   lastSignIn: timestamp('last_sign_in', { withTimezone: true }),
   metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),

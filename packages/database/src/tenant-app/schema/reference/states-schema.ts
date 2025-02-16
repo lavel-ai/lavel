@@ -4,8 +4,7 @@ import { courthouses } from "./courthouses-schema";
 import { cities } from "./cities-schema";
 import { relations } from "drizzle-orm/relations";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const referenceSchema = pgSchema("reference");
+import { referenceSchema } from "./reference-schema-instance";
 
 export const states = referenceSchema.table("states", {
 	id: integer("id").primaryKey().generatedByDefaultAsIdentity({ name: "states_id_seq" }),

@@ -1,12 +1,16 @@
-import { pgSchema } from "drizzle-orm/pg-core";
+// packages/database/src/tenant-app/schema/index.ts
+import { mainSchema, schemaMain } from "./main/index";
+import { referenceSchema } from "./reference";
+import { embeddingsSchema } from "./embeddings";
 
+export const combinedSchemaForMigrations = {
+    main: mainSchema, 
+    embeddings: embeddingsSchema,
+    reference: referenceSchema
+} as const;
 
-export const mainSchema = pgSchema("main");
-export const referenceSchema = pgSchema("reference");
-export const embeddingsSchema = pgSchema("embeddings");
-
-export * from "./main";
-export * from "./reference";
-export * from "./embeddings";
-
-export const combinedSchema = {main: mainSchema, reference: referenceSchema, embeddings: embeddingsSchema};
+export const combinedSchema = {
+    ...schemaMain,
+    ...embeddingsSchema, 
+    ...referenceSchema
+} as const;

@@ -1,19 +1,22 @@
 import { pgSchema } from "drizzle-orm/pg-core";
+import { states } from "./states-schema";
+import { cities } from "./cities-schema";
+import { lawBranches } from "./law-branches-schema";
+import { jurisdictions } from "./jurisdictions-schema";
+import { courthouses } from "./courthouses-schema";
+import { trialStages } from "./trial-stages-schema";
+import { trialTypes } from "./trial-types-schema";
+import { trialStagesTypes } from "./trial-stages-types-schema";
 
-export const referenceSchema = pgSchema("reference");
+export const referenceSchema = {
 
-// Base tables (no foreign key dependencies)
-export * from "./states-schema";
-export * from "./cities-schema";
-export * from "./law-branches-schema";
-export * from "./jurisdictions-schema";
+    states,
+    cities,
+    lawBranches,
+    jurisdictions,
+    courthouses,
+    trialStages,
+    trialTypes,
+    trialStagesTypes,
 
-// First level dependencies
-export * from "./courthouses-schema";
-export * from "./trial-stages-schema";
-export * from "./trial-types-schema";
-
-// Second level dependencies
-export * from "./trial-stages-types-schema";
-export * from "./trial-types-schema";
-export * from "./trial-stages-schema";
+} as const;

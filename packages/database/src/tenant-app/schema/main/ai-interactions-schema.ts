@@ -2,8 +2,7 @@ import { jsonb, text, timestamp, uuid, integer, boolean, pgSchema } from "drizzl
 import { documents } from "./documents-schema";
 import { users } from "./users-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const aiInteractions = mainSchema.table('ai_interactions', {
   id: uuid('id').primaryKey().defaultRandom(),

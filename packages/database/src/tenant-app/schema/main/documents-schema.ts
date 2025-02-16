@@ -3,8 +3,7 @@ import { jsonb, text, timestamp, uuid, integer, boolean, date } from "drizzle-or
 import { cases } from "./case-schema";
 import { users } from "./users-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const documents = mainSchema.table('documents', {
   id: uuid('id').primaryKey().defaultRandom(),

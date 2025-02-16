@@ -5,7 +5,7 @@ import { relations } from "drizzle-orm";
 import { teams } from "./teams-schema";
 import { users } from "./users-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 // Junction table for the many-to-many relationship between teams and profiles
 export const teamMembers = mainSchema.table("team_members", {
@@ -20,7 +20,9 @@ export const teamMembers = mainSchema.table("team_members", {
     createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' })
         .default(sql`CURRENT_TIMESTAMP`)
         .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' })
+        .default(sql`CURRENT_TIMESTAMP`)
+        .notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: 'string' }),
     
     // Audit fields

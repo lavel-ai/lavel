@@ -1,11 +1,10 @@
 import { sql } from "drizzle-orm";
-import { integer, timestamp, varchar, unique, pgSchema, pgTable } from "drizzle-orm/pg-core";
+import { integer, timestamp, varchar, unique, pgSchema } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { courthouses } from "./courthouses-schema";
 import { trialTypes } from "./trial-types-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const referenceSchema = pgSchema("reference");
+import { referenceSchema } from "./reference-schema-instance";
 
 export const lawBranches = referenceSchema.table("law_branches", {
 	id: integer("id").primaryKey().generatedByDefaultAsIdentity({ name: "law_branches_id2_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),

@@ -1,53 +1,62 @@
+// apps/app/app/(authenticated)/components/shared/base-kpi.tsx
+// REMOVE "use client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/design-system/components/ui/card";
-import { LucideIcon } from "lucide-react";
+import { Skeleton } from "@repo/design-system/components/ui/skeleton";
+import { cn } from "@repo/design-system/lib/utils";
+import { type LucideIcon } from "lucide-react"
 
-interface BaseKPIProps {
+type Props = {
   title: string;
-  icon: LucideIcon;
-  isLoading?: boolean;
-  error?: Error | null;
-  value: string | number;
+  value: number | string;
+  isLoading: boolean;
+  icon?: LucideIcon; // Icon is now a component type
+  diff?: number;
   description?: string;
-}
+  error?: string | null;
+};
 
-export function BaseKPI({
+export const BaseKPI = ({
   title,
-  icon: Icon,
-  isLoading,
-  error,
   value,
+  isLoading,
+  icon: Icon, // Use a different name for the prop, like 'IconComponent'
+  diff,
   description,
-}: BaseKPIProps) {
+  error,
+}: Props) => {
+
   return (
-    <Card className="border-l-4 border-l-primary">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="font-medium text-muted-foreground text-sm">
+    <Card className="flex flex-col">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
         </CardTitle>
-        <div className="pl-2">
-          <Icon className="h-4 w-4 text-primary" />
-        </div>
+        {Icon && <Icon />} {/* Render the icon directly */}
       </CardHeader>
-      <CardContent className="flex flex-col items-center justify-center pt-4">
+      <CardContent>
         {isLoading ? (
-          <div className="animate-pulse text-center font-bold text-2xl">
-            Loading...
-          </div>
+          <Skeleton className="h-9 w-full" />
         ) : error ? (
-          <div className="text-center text-destructive text-sm">
-            Failed to load
-          </div>
+          <div className="text-destructive text-sm">{error}</div>
         ) : (
-          <>
-            <div className="text-center font-bold text-3xl">{value}</div>
-            {description && (
-              <p className="mt-1 text-center text-muted-foreground text-xs">
-                {description}
-              </p>
-            )}
-          </>
+          <div className="text-2xl font-bold">{value}</div>
+        )}
+        {diff && (
+          <div
+            className={cn("text-sm", {
+              "text-destructive": diff < 0,
+              "text-emerald-500": diff > 0,
+            })}
+          >
+            {diff > 0 ? "+" : ""}
+            {diff}%
+          </div>
+        )}
+        {description && (
+          <div className="text-xs text-muted-foreground">{description}</div>
         )}
       </CardContent>
     </Card>
   );
-}
+};

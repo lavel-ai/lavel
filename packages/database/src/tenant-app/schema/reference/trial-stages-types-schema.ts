@@ -1,10 +1,9 @@
-import { pgTable, integer, primaryKey, foreignKey, pgSchema } from "drizzle-orm/pg-core";
+import { integer, primaryKey, pgSchema } from "drizzle-orm/pg-core";
 import { trialStages } from "./trial-stages-schema";
 import { trialTypes } from "./trial-types-schema";
 import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const referenceSchema = pgSchema("reference");
+import { referenceSchema } from "./reference-schema-instance";
 
 export const trialStagesTypes = referenceSchema.table("trial_stages_types", {
     trialStageId: integer("trial_stage_id").notNull().references(() => trialStages.id, { onDelete: "cascade" }),

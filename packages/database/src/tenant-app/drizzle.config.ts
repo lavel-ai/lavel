@@ -1,7 +1,8 @@
 import { defineConfig } from 'drizzle-kit';
 import { keys } from '../../keys';
+
 export default defineConfig({
-  schema: './schema/**/index.ts',
+  schema: './schema/**/*.ts', // ✅ Scan all schema files inside `schema/`
   out: './.drizzle',
   dialect: 'postgresql',
   dbCredentials: {

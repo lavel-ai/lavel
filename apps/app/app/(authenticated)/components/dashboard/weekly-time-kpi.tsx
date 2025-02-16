@@ -1,5 +1,3 @@
-'use client';
-
 import { useWeeklyTimeEntries } from '@/app/hook/src/time-entries';
 import { Clock } from 'lucide-react';
 import { BaseKPI } from '../shared/base-kpi';

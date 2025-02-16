@@ -1,6 +1,6 @@
 'use server';
 
-import { getTenantDbClient } from '../../utils/tenant-db';
+import { getTenantDbClientUtil } from '../../utils/tenant-db';
 import { getTodayAndOverdueTasks } from '@repo/database/src/tenant-app/queries/tasks-queries';
 import { findUserByClerkId } from '@repo/database/src/tenant-app/queries/users-queries';
 import type { NextRequest } from 'next/server';
@@ -13,7 +13,7 @@ import { revalidatePath } from 'next/cache';
  */
 export async function getTodayAndOverdueTasksKPI(request: NextRequest, clerkUserId: string) {
   try {
-    const tenantDb = await getTenantDbClient(request);
+    const tenantDb = await getTenantDbClientUtil();
     
     // First, get the user's database ID
     const user = await findUserByClerkId(tenantDb, clerkUserId);
@@ -51,7 +51,7 @@ export async function createTaskAction(taskData: any, req: NextRequest) {
     return { error: 'Unauthorized' };
   }
 
-  const tenantDb = await getTenantDbClient(req);
+  const tenantDb = await getTenantDbClientUtil();
   const user = await findUserByClerkId(tenantDb, clerkId);
 
   if (!user) {

@@ -2,8 +2,7 @@ import { pgSchema, uuid, text, timestamp, jsonb, interval } from "drizzle-orm/pg
 import { sql } from "drizzle-orm";
 import { users } from "./users-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const timeEntries = mainSchema.table("time_entries", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -4,8 +4,7 @@ import { relations } from "drizzle-orm/relations";
 import { lawBranches } from "./law-branches-schema";
 import { trialStagesTypes } from "./trial-stages-types-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const referenceSchema = pgSchema("reference");
+import { referenceSchema } from "./reference-schema-instance";
 
 export const trialTypes = referenceSchema.table("trial_types", {
 	id: integer("id").primaryKey().generatedByDefaultAsIdentity({ name: "trial_types_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),

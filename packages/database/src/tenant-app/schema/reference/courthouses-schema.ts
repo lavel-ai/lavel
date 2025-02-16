@@ -6,7 +6,7 @@ import { lawBranches } from "./law-branches-schema";
 import { states } from "./states-schema";
 import { relations } from "drizzle-orm/relations";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-export const referenceSchema = pgSchema("reference");
+import { referenceSchema } from "./reference-schema-instance";
 
 export const courthouses = referenceSchema.table("courthouses", {
 	id: integer("id").primaryKey().generatedByDefaultAsIdentity(),

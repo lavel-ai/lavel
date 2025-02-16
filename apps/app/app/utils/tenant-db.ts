@@ -1,9 +1,10 @@
 // apps/app/app/utils/tenant-db.ts
 "use server";
 import type { NextRequest } from 'next/server';
-import { getTenantConnection } from '@repo/database/src/tenant-app/tenant-connection-db';
+import { createTenantConnection } from '@repo/database/src/tenant-app/tenant-connection-db'; // Import createTenantConnection
 import type { DrizzleClient } from '@repo/database/src/tenant-app/tenant-connection-db';
 import { getTenantConnectionUrl } from '@repo/database/src/tenant-app/queries/tenant-lookup';
+import { getTenantIdentifier } from './tenant-identifier'; // Import getTenantIdentifier server action
 
 // Extend NextRequest to include our tenant database client.
 declare module 'next/server' {
@@ -39,15 +40,15 @@ function extractTenantIdentifier(request: NextRequest): string {
  * @param request - The Next.js request object.
  * @returns A promise that resolves to the tenant database client.
  */
-export async function getTenantDbClient(request: NextRequest): Promise<DrizzleClient> {
-  const tenantIdentifier = extractTenantIdentifier(request);
-  // Dynamically look up the connection URL for this tenant.
-  const dbUrl = await getTenantConnectionUrl(tenantIdentifier);
-  if (!dbUrl) {
-    throw new Error(`No connection URL found for tenant: ${tenantIdentifier}`);
-  }
-  return getTenantConnection(dbUrl);
-}
+// export async function getTenantDbClient(request: NextRequest): Promise<DrizzleClient> {
+//   const tenantIdentifier = extractTenantIdentifier(request);
+//   // Dynamically look up the connection URL for this tenant.
+//   const dbUrl = await getTenantConnectionUrl(tenantIdentifier);
+//   if (!dbUrl) {
+//     throw new Error(`No connection URL found for tenant: ${tenantIdentifier}`);
+//   }
+//   return getTenantConnection(dbUrl);
+// }
 
 /**
  * Middleware helper to attach the tenant database client to the request.
@@ -57,7 +58,41 @@ export async function getTenantDbClient(request: NextRequest): Promise<DrizzleCl
  *
  * @param request - The incoming NextRequest.
  */
-export async function attachTenantDbToRequest(request: NextRequest): Promise<void> {
-  const tenantDb = await getTenantDbClient(request);
-  request.tenantDb = tenantDb;
-}
+// export async function attachTenantDbToRequest(request: NextRequest): Promise<void> {
+//   const tenantDb = await getTenantDbClient(request);
+//   request.tenantDb = tenantDb;
+// }
+
+
+// apps/app/app/utils/tenant-db.ts
+
+// import { createTenantConnection } from '@repo/database/src/tenant-app/tenant-connection-db'; // Import createTenantConnection
+// import { getTenantIdentifier } from './tenant-identifier'; // Import getTenantIdentifier server action
+
+/**
+ * Utility function to get the tenant database client in Server Actions and Server Components.
+ *
+ * It is designed to be used within Server Components or Server Actions.
+ *
+ * @returns The tenant-specific Drizzle client.
+ * @throws Error if tenant identifier cannot be determined or connection URL is not found.
+ */
+export const getTenantDbClientUtil = async (): Promise<DrizzleClient> => {
+  try {
+    const identifier = await getTenantIdentifier();
+    if (!identifier) {
+      throw new Error("Tenant identifier not found");
+    }
+
+    const connectionUrl = await getTenantConnectionUrl(identifier);
+    if (!connectionUrl) {
+      throw new Error(`No connection URL found for tenant: ${identifier}`);
+    }
+
+    const db = createTenantConnection(connectionUrl) as DrizzleClient; // 🚨 Explicitly cast the type
+    return db;
+  } catch (error: any) {
+    console.error("Error in getTenantDbClientUtil:", error);
+    throw new Error(`Failed to get Tenant DB Client: ${error.message}`);
+  }
+};

@@ -5,8 +5,7 @@ import { sql } from "drizzle-orm";
 import { cases } from "./case-schema";
 import { users } from "./users-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const eventStatus = mainSchema.enum("event_status", ['confirmed', 'tentative', 'cancelled']);
 export const eventType = mainSchema.enum("event_type", ['hearing', 'appointment', 'call', 'meeting', 'other']);

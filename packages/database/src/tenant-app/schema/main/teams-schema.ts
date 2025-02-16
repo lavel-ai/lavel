@@ -7,8 +7,7 @@ import { users } from "./users-schema";
 import { cases } from "./case-schema";
 import { teamMembers } from "./team-members-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const teams = mainSchema.table("teams", {
     id: uuid("id").defaultRandom().primaryKey().notNull(),

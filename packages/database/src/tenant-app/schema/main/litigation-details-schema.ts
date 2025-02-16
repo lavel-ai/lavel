@@ -3,7 +3,7 @@ import { cases } from './case-schema';
 import { users } from './users-schema';
 import { relations } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { courthouses } from '../reference';
+import { courthouses } from '../reference/courthouses-schema';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
 export const mainSchema = pgSchema('main');

@@ -1,5 +1,3 @@
-Okay, here's a comprehensive documentation draft explaining the system architecture, components, and workflow of your Lavel AI multi-tenant platform. This is designed to be understandable to someone with a technical background but not necessarily deep familiarity with all the specific technologies used.
-
 # Lavel AI: Multi-Tenant System Architecture Documentation
 
 ### 1. Introduction
@@ -20,7 +18,6 @@ Lavel AI is a multi-tenant SaaS platform built using Next.js and a monorepo arch
     *   `organization_members`: Maps users to organizations (many-to-many relationship, although in the current implementation, users belong to only one organization).
 
 4.  **Tenant Database:** A separate PostgreSQL database for each tenant, containing that tenant's specific data (e.g., legal documents, case information, AI model outputs).
-https://pbs.twimg.com/media/GjMyJldWUAE5ICt?format%3Djpg%26name%3Dlarge
 5.  **Authentication:** Handled by Clerk. Users log in on the main domain (lavel.ai) and are then redirected to their organization's subdomain.
 
 6.  **Authorization:** Clerk provides the authentication and basic user information. Role-Based Access Control (RBAC) *within* each tenant's application would be a separate layer built on top of this (not fully detailed in the existing code, but mentioned as a future step).
@@ -133,10 +130,10 @@ sequenceDiagram
 | Component                               | Location                                                                       | Description                                                                                                                                                                                                            |
 | --------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AppLayout`                             | `apps/app/app/(authenticated)/layout.tsx`                                      | Layout for authenticated routes. Handles *post-login redirection* to the user's organization subdomain if the user logged in on the main domain. Gets the user's organization via `fetchDefaultOrganizationForUser`.    |
-| `TenantDBProvider`          | `packages/database/src/tenant-app/provider.tsx`             | A *client component* that wraps the application (or relevant parts of it)  It is responsible for identifying the tenant, fetching the database connection URL (via a server action), creating the Drizzle client, and providing it via React Context. |
-| `useTenantDB`               | `packages/database/src/tenant-app/provider.tsx`               | A custom React hook that *server components* use to access the tenant-specific Drizzle client from the `TenantDBContext`.  Throws an error if used outside of `TenantDBProvider`.                                   |
-| `getTenantIdentifier`       | `packages/database/src/tenant-app/utils/tenant-identifier.ts`   | A *server action* that extracts the tenant identifier (subdomain) from the request headers.  Uses `next/headers`, so it works in server components and route handlers. Returns the subdomain, or an empty string if it's the main domain. |
-| `getTenantConnectionUrlAction`       | `packages/database/src/tenant-app/actions/tenant-actions.ts`   | A *server action* that is used for the client component to get the connection string.                  |
+| `TenantDBProvider`          | `apps/app/app/providers/provider.tsx`             | A *client component* that wraps the application (or relevant parts of it)  It is responsible for identifying the tenant, fetching the database connection URL (via a server action), creating the Drizzle client, and providing it via React Context. |
+| `useTenantDB`               | `apps/app/app/providers/provider.tsx`               | A custom React hook that *server components* use to access the tenant-specific Drizzle client from the `TenantDBContext`.  Throws an error if used outside of `TenantDBProvider`.                                   |
+| `getTenantIdentifier`       | `apps/app/app/utils/tenant-identifier.ts`   | A *server action* that extracts the tenant identifier (subdomain) from the request headers.  Uses `next/headers`, so it works in server components and route handlers. Returns the subdomain, or an empty string if it's the main domain. |
+| `getTenantConnectionUrlAction`       | `apps/app/app/actions/users/tenant-actions.ts`   | A *server action* that is used for the client component to get the connection string.                  |
 | `getTenantConnectionUrl`               | `@repo/database/src/tenant-app/queries/tenant-lookup.ts`                | Retrieves the database connection URL for a given subdomain. Uses Redis caching for performance. Queries the *main* application database if the URL is not in the cache.                                             |
 | `fetchDefaultOrganizationForUser`       | `@repo/database/src/main-app/queries/organization-queries.ts`                  | Queries the *main* database to get the organization a user is part of (using the Clerk user ID).                                                                                                                  |
 | Route Handlers/Server Components        | `apps/app/...`                                                               | The actual application logic (pages and API endpoints). They use `useTenantDB` to access the appropriate tenant database.                                                                      |

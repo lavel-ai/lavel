@@ -1,4 +1,4 @@
-import { pgSchema, pgTable } from "drizzle-orm/pg-core";
+import { pgSchema } from "drizzle-orm/pg-core";
 import { uuid, timestamp, text, foreignKey, boolean, varchar, unique, jsonb, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
@@ -6,8 +6,7 @@ import { corporations } from "./corporations-schema";
 import { users } from "./users-schema";
 import { teams } from "./teams-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 // Define the structure for contact information
 export const clientContactInfoSchema = {

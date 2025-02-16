@@ -23,18 +23,15 @@ neonConfig.webSocketConstructor = ws;
 export function createTenantConnection(
   connectionUrl: string
 ): NeonDatabase<typeof combinedSchema> {
-  // Create a new pool using the provided connection URL.
-  // Under the hood, Neon uses PG Bouncer to efficiently manage these connections.
+
   const pool = new Pool({ connectionString: connectionUrl });
   
   // Return a Drizzle client, passing in the combined schema.
-  return drizzle(pool, { schema: combinedSchema });
+  return drizzle<typeof combinedSchema>(pool, { schema: combinedSchema }) ;
 }
 
-// Export the type of the drizzle client for type-safety elsewhere in your code.
 export type DrizzleClient = ReturnType<typeof createTenantConnection>;
 
-// Cache for database connections to avoid creating multiple connections for the same tenant.
 const connectionCache = new Map<string, DrizzleClient>();
 
 /**

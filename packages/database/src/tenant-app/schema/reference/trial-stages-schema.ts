@@ -3,8 +3,7 @@ import { sql } from "drizzle-orm"
 import { relations } from "drizzle-orm"
 import { trialStagesTypes } from "./trial-stages-types-schema"
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const referenceSchema = pgSchema("reference");
+import { referenceSchema } from "./reference-schema-instance";
 
 export const trialStages = referenceSchema.table("trial_stages", {
 	id: integer("id").primaryKey().generatedByDefaultAsIdentity({ name: "trial_stages_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),

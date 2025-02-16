@@ -4,8 +4,7 @@ import { caseParties } from "./case-parties";
 import { users } from "./users-schema";
 import { relations } from "drizzle-orm/relations";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-
-export const mainSchema = pgSchema("main");
+import { mainSchema } from "./main-schema-instance";
 
 export const courtParticipations = mainSchema.table('court_participations', {
     id: uuid('id').defaultRandom().primaryKey(),

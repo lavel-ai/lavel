@@ -6,12 +6,9 @@ import { notFound } from 'next/navigation';
 import { AvatarStack } from './components/avatar-stack';
 import { Cursors } from './components/cursors';
 import { Header } from './components/header';
-import DashboardGrid from './components/dashboard/dashboard-grid';
-import { getKPIOrder } from '@/app/actions/components/kpi-actions';
-// import DashboardGrid from './components/dashboard/dashboard-grid';
-// import { getKPIOrder } from '@/app/actions/components/kpi-actions';
-// import { getTenantDbClientUtil } from '@/app/utils/tenant-db'; // Import the utility
-// import { cases } from '@repo/database/src/tenant-app/schema'; // Example: Import your schema
+import { TestUserId } from './components/test-user-id';
+import AdvisoryCasesKPI from './components/kpis/advisory-cases-kpi';
+import LitigationCasesKPI from './components/kpis/litigation-cases-kpi';
 
 const title = 'Acme Inc';
 const description = 'My application.';
@@ -34,30 +31,6 @@ const App = async () => {
     notFound();
   }
 
-  // Fetch initial KPI order
-  const initialKPIOrder = await getKPIOrder();
-
-  // Define KPI data (including IDs and initial order)
-  const kpis = [
-    { id: 'litigation-cases', component: 'LitigationCasesKPI', title: 'Litigation Cases' },
-    { id: 'advisory-cases', component: 'AdvisoryCasesKPI', title: 'Advisory Cases' },
-    // Add other KPIs here
-  ];
-
-  // Combine initial order from the database with the KPI data
-  const orderedKPIs = kpis.map(kpi => {
-    const orderEntry = initialKPIOrder.find(entry => entry.kpiId === kpi.id);
-    return {
-      ...kpi,
-      order: orderEntry ? orderEntry.order : Infinity, // Default to end if not found
-    };
-  }).sort((a, b) => a.order - b.order); // Sort by order
-
-  // Example of fetching data in a Server Component (replace with your actual query)
-  // const tenantDb = await getTenantDbClientUtil();
-  // const allCases = await tenantDb.select().from(cases);
-  // console.log(allCases);
-
   return (
     <>
       <Header pages={['Building Your Application']} page="Data Fetching">
@@ -68,9 +41,14 @@ const App = async () => {
           </CollaborationProvider>
         )}
       </Header>
+      <TestUserId />
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        {/* Pass KPI data and initial order to DashboardGrid */}
-        <DashboardGrid kpis={orderedKPIs} />
+        {/* Render KPI components directly */}
+        <div className="grid auto-rows-min gap-4 md:grid-cols-3">
+          <AdvisoryCasesKPI />
+          <LitigationCasesKPI />
+          {/* Add other KPI components here as you create them */}
+        </div>
       </div>
       <div className="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min" />
     </>

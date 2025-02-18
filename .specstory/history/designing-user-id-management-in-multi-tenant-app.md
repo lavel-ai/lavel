@@ -1695,6 +1695,21 @@ This is the most concise and type-safe solution to the immediate error. It ensur
 
 ---
 
+_**User**_
+
+in this action we are not accessing correctly to the data, lets review it and retreive the proper connection url. 
+
+here are the tables 
+@projects-schema.ts @organizations-schema.ts @tenant-actions.ts 
+
+---
+
+_**Assistant**_
+
+
+
+---
+
 
 
 ---

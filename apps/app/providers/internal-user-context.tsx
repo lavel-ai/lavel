@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { useUser } from '@repo/auth/client';
 import { findUserByClerkId } from '@repo/database/src/tenant-app/queries/users-queries';
-import { getTenantDbClient } from '@/app/utils/tenant-db';
+import { getTenantDbClient } from '@/app/utils/get-tenant-db-connection';
 // import type { NextRequest } from 'next/server'; // No longer needed
 
 interface InternalUserContextType {

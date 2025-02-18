@@ -1,6 +1,6 @@
 'use server';
 
-import { getTenantDbClientUtil } from '../../utils/tenant-db';
+import { getTenantDbClientUtil } from '../../utils/get-tenant-db-connection';
 import { getTodayAndOverdueTasks } from '@repo/database/src/tenant-app/queries/tasks-queries';
 import { findUserByClerkId } from '@repo/database/src/tenant-app/queries/users-queries';
 import type { NextRequest } from 'next/server';

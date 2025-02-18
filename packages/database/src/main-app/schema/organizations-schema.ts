@@ -16,7 +16,6 @@ export const organizations = pgTable('organizations', {
   clerkId: text('clerk_id').unique(),
   name: text('name'),
   slug: text('slug').unique(),
-  subdomainSlug: text('subdomain_slug').unique(),
   logoUrl: text('logo_url'),
   hasProject: boolean('has_project').default(false).notNull(),
   metadata: jsonb('metadata'),

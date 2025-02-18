@@ -1,6 +1,6 @@
 'use server';
 
-import { getTenantDbClientUtil } from '@/app/utils/tenant-db';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
 import { getWeeklyTimeEntriesForUser } from '@repo/database/src/tenant-app/queries/time-entries-queries';
 import type { NextRequest } from 'next/server';
 

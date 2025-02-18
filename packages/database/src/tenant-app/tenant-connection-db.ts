@@ -1,55 +1,25 @@
-// packages/database/src/tenant-app/tenant-connection-db.ts
-
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+// db/index.ts
+import 'dotenv/config'; // Load environment variables if needed (e.g., for default URL)
+import { drizzle, type NeonHttpDatabase } from 'drizzle-orm/neon-http';
+import { neonConfig } from '@neondatabase/serverless';
+import * as schema from './schema'; // Import your combined schema
 import ws from 'ws';
-import { combinedSchema } from './schema';  // This imports your combined schema from index.ts
-import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
+/**
+ * Creates a Drizzle client connected to a Neon database using the neon-http driver.
+ *
+ * This function is a factory that takes a connection URL and returns a Drizzle client
+ * configured with your combined schema and the neon-http driver.
+ *
+ * @param connectionUrl - The database connection URL to use.
+ * @returns A type-safe Drizzle client instance.
+ */
 
-// Supply a WebSocket constructor if running in Node.js.
 neonConfig.webSocketConstructor = ws;
+export type TenantDatabase = NeonHttpDatabase<typeof schema>; // Export the type
 
-/**
- * Creates and returns a tenant-specific Drizzle client using a Neon connection pool.
- *
- * This client is configured with the combined schema which includes:
- *  - main
- *  - reference
- *  - embeddings
- *
- * @param connectionUrl - The tenant's database connection URL.
- * @returns A properly typed Drizzle client with the combined schema.
- */
-export function createTenantConnection(
-  connectionUrl: string
-): NeonDatabase<typeof combinedSchema> {
-
-  const pool = new Pool({ connectionString: connectionUrl });
-  
-  // Return a Drizzle client, passing in the combined schema.
-  return drizzle<typeof combinedSchema>(pool, { schema: combinedSchema }) ;
+export function createTenantDbClient(connectionString: string): TenantDatabase {
+  return drizzle(connectionString, { schema: schema });
 }
 
-export type DrizzleClient = ReturnType<typeof createTenantConnection>;
-
-const connectionCache = new Map<string, DrizzleClient>();
-
-/**
- * Gets or creates a tenant database connection from the cache.
- *
- * By caching the connection, we avoid the overhead of reinitializing the pool for each request.
- *
- * @param connectionUrl - The tenant's database connection URL.
- * @returns A cached or new database connection.
- */
-export function getTenantConnection(
-  connectionUrl: string
-): DrizzleClient {
-  const cacheKey = connectionUrl; // Using the connection URL as the unique cache key.
-  
-  if (!connectionCache.has(cacheKey)) {
-    connectionCache.set(cacheKey, createTenantConnection(connectionUrl));
-  }
-  
-  return connectionCache.get(cacheKey)!;
-}
+// Export types for convenience
+export type DrizzleClient = TenantDatabase; // Alias for clarity - DrizzleClient is now NeonDatabase type

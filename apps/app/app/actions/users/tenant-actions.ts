@@ -1,37 +1,73 @@
 // apps/app/app/actions/users/tenant-actions.ts
 'use server';
 
-import { getTenantConnectionUrl } from '@repo/database/src/tenant-app/queries/tenant-lookup';
+import { db } from "@repo/database/src/main-app/db";
+import { organizations, projects } from "@repo/database/src/main-app/schema";
+import { eq } from "drizzle-orm";
+import { getTenantIdentifier } from "@/app/utils/tenant-identifier";
+import { redis } from '@repo/rate-limit';
+
+const CACHE_TTL_SECONDS = 60 * 60 * 24; // 1 day (adjust as needed)
 
 /**
  * Server action that retrieves the database connection URL for a specific tenant.
  *
- * This function serves as a wrapper around the server-only getTenantConnectionUrl function,
- * making it accessible as a Next.js server action. It's used in the multi-tenant system
- * to dynamically look up the appropriate database connection URL for a given tenant subdomain.
- *
- * The function utilizes Redis caching to optimize performance by storing frequently accessed
- * connection URLs. If the URL is not in cache, it queries the main database to find the
- * corresponding organization and project information.
- *
- * @param subdomain - The tenant's subdomain identifier (e.g., 'tenant1' from 'tenant1.example.com')
- *
- * @returns Promise<string | null> A promise that resolves to:
- *   - The tenant's database connection URL if found
- *   - null if no matching tenant is found or if an error occurs
- *
- * @example
- * // In a server component or action
- * const connectionUrl = await getTenantConnectionUrlAction('tenant1');
- * if (connectionUrl) {
- *   // Use the connection URL to establish database connection
- * } else {
- *   // Handle case where tenant is not found
- * }
+ * @returns Promise<string | null> The tenant's database connection URL, or null if not found.
  */
-export async function getTenantConnectionUrlAction(
-  subdomain: string
-): Promise<string | null> {
-  return getTenantConnectionUrl(subdomain);
+export async function getTenantConnectionUrlAction(): Promise<string | null> {
+  const identifier = await getTenantIdentifier();
+
+  if (!identifier) {
+    console.error("Tenant identifier not found.");
+    return null;
+  }
+  if (identifier === "") {
+    throw new Error(
+      "Tenant identifier not found in server action context (main domain access not allowed)."
+    );
+  }
+
+  const cacheKey = `tenant:connectionUrl:${identifier}`;
+
+  // Try to get from Redis cache
+  const cachedUrl = await redis.get<string>(cacheKey);
+  if (cachedUrl) {
+    console.log(`Cache HIT for tenant: ${identifier}`);
+    return cachedUrl;
+  }
+
+  console.log(`Cache MISS for tenant: ${identifier}`);
+
+  try {
+    // Find the organization with its related project.
+    const organization = await db.query.organizations.findFirst({
+      where: eq(organizations.slug, identifier),
+      with: {
+        projects: true, // Fetch the related project
+      },
+    });
+
+    if (!organization) {
+      console.error(`Organization not found for tenant: ${identifier}`);
+      return null;
+    }
+
+    if (organization.projects.length === 0) {
+      console.error(`No project found for organization: ${identifier}`);
+      return null;
+    }
+     if (!organization.projects[0].connectionUrl) {
+        console.error(`connectionUrl is null for organization: ${identifier}`);
+        return null;
+     }
+
+    // Store in Redis cache
+    await redis.set(cacheKey, organization.projects[0].connectionUrl, { ex: CACHE_TTL_SECONDS });
+
+    return organization.projects[0].connectionUrl;
+  } catch (error) {
+    console.error("Error fetching tenant connection URL:", error);
+    return null;
+  }
 }
 

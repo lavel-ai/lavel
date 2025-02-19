@@ -127,6 +127,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.0.0)
+      '@hookform/resolvers':
+        specifier: ^3.10.0
+        version: 3.10.0(react-hook-form@7.54.2(react@19.0.0))
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
@@ -208,9 +211,15 @@ importers:
       react-dom:
         specifier: 19.0.0
         version: 19.0.0(react@19.0.0)
+      react-hook-form:
+        specifier: ^7.54.2
+        version: 7.54.2(react@19.0.0)
       require-in-the-middle:
         specifier: ^7.4.0
         version: 7.4.0
+      use-resize-observer:
+        specifier: ^9.1.0
+        version: 9.1.0(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       uuid:
         specifier: ^11.0.5
         version: 11.0.5
@@ -3332,6 +3341,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@juggle/resize-observer@3.4.0':
+    resolution: {integrity: sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA==}
 
   '@knocklabs/client@0.11.1':
     resolution: {integrity: sha512-/z8HbUs2L0S7cBx4/gCP7oQLeZpkp0fUrq9e+LB4c6Gc7BUTfzohA6b4o0ztu2te5+Bp1xKsiNwCuROy29xIgg==}
@@ -11086,6 +11098,12 @@ packages:
       '@types/react':
         optional: true
 
+  use-resize-observer@9.1.0:
+    resolution: {integrity: sha512-R25VqO9Wb3asSD4eqtcxk8sJalvIOYBqS8MNZlpDSQ4l4xMQxC/J7Id9HoTqPq8FwULIn0PVW+OAqF2dyYbjow==}
+    peerDependencies:
+      react: 16.8.0 - 18
+      react-dom: 16.8.0 - 18
+
   use-sidecar@1.1.2:
     resolution: {integrity: sha512-epTbsLuzZ7lPClpz2TyryBfztm7m+28DlEv2ZCQ3MDr5ssiwyOwGH/e5F9CkfWjJ1t4clvI58yF822/GUkjjhw==}
     engines: {node: '>=10'}
@@ -13478,6 +13496,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
+
+  '@juggle/resize-observer@3.4.0': {}
 
   '@knocklabs/client@0.11.1(react@19.0.0)':
     dependencies:
@@ -22749,6 +22769,12 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.0.7
+
+  use-resize-observer@9.1.0(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+    dependencies:
+      '@juggle/resize-observer': 3.4.0
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
 
   use-sidecar@1.1.2(@types/react@19.0.7)(react@19.0.0):
     dependencies:

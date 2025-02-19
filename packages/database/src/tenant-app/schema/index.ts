@@ -30,3 +30,7 @@ export * from "./trial-types-schema";
 export * from "./trial-stages-types-schema";
 export * from "./vectors-schema";
 export * from "./kpi-order-schema";
+export * from "./addresses-schema";
+export * from "./client-addresses-schema";
+export * from "./contacts-schema";
+export * from "./client-contacts-schema";

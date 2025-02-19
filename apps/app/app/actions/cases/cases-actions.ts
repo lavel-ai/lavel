@@ -93,7 +93,6 @@ export async function createCase(req: NextRequest, newCaseData: any) {
         // Set leadAttorneyId to the current user's ID if not provided
         const caseData = {
             ...newCaseData,
-            leadAttorneyId: internalUserId,
         };
 
         const createdCase = await tenantDb.insert(cases).values(caseData).returning();

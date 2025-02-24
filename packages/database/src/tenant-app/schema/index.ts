@@ -3,6 +3,7 @@
 
 export * from './users-schema';
 export * from './ai-interactions-schema';
+export * from './addresses-schema';
 export * from './case-parties';
 export * from './case-schema';
 export * from './clients-schema';
@@ -16,7 +17,6 @@ export * from './litigation-details-schema';
 export * from './mentions-schema';
 export * from './notifications-schema';
 export * from './tasks-schema';
-export * from './team-members-schema';
 export * from './teams-schema';
 export * from './time-entries-schema';
 export * from './transcriptions-schema';
@@ -30,7 +30,8 @@ export * from "./trial-types-schema";
 export * from "./trial-stages-types-schema";
 export * from "./vectors-schema";
 export * from "./kpi-order-schema";
-export * from "./addresses-schema";
 export * from "./client-addresses-schema";
 export * from "./contacts-schema";
 export * from "./client-contacts-schema";
+export * from "./profiles-schema";
+export * from "./team-profiles-schema";

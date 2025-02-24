@@ -29,3 +29,4 @@ export async function getCorporationById(
     .where(eq(corporations.id, corporationId));
   return result[0];
 }
+

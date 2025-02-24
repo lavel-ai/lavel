@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { Combobox } from '@repo/design-system/components/ui/combobox'; // Assuming you have a Combobox component
-import { getClientByIdAction, getClients } from '@/app/actions/clients/clients-actions'; // Server action to fetch clients
+import { Combobox } from '@repo/design-system/components/ui/combobox';
+// Use the renamed server actions
+import { getClients, getClientByIdAction } from '@/app/actions/clients/clients-actions';
 import { Client } from '@repo/database/src/tenant-app/schema/clients-schema';
-import { getClientById } from '@/app/actions/clients/clients-actions';
 
 interface ClientComboboxProps {
   onSelect: (clientId: string) => void;
-  initialClientId?: string; // Optional initial client ID
+  initialClientId?: string;
 }
 
 const ClientCombobox: React.FC<ClientComboboxProps> = ({ onSelect, initialClientId }) => {
@@ -19,26 +19,27 @@ const ClientCombobox: React.FC<ClientComboboxProps> = ({ onSelect, initialClient
   const [isFetchingInitialClient, setIsFetchingInitialClient] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Fetch initial client data if initialClientId is provided
-    useEffect(() => {
-        if (initialClientId) {
-            setIsFetchingInitialClient(true);
-            startTransition(async () => {
-                const initialClientData = await getClientByIdAction(initialClientId);  // You'll need to create this server action
-                if (initialClientData) {
-                    setClients([initialClientData]); // Set initial client as the only option
-                    setFilteredClients([initialClientData]);
-                    setSearchTerm(initialClientData.name); // Set initial client name in the input
-                }
-                setIsFetchingInitialClient(false);
-            });
+  useEffect(() => {
+    if (initialClientId) {
+      setIsFetchingInitialClient(true);
+      startTransition(async () => {
+        // Use the renamed server action
+        const initialClientData = await getClientByIdAction(initialClientId);
+        if (initialClientData) {
+          setClients([initialClientData]);
+          setFilteredClients([initialClientData]);
+          setSearchTerm(initialClientData.name);
         }
-    }, [initialClientId]);
+        setIsFetchingInitialClient(false);
+      });
+    }
+  }, [initialClientId]);
 
   useEffect(() => {
     const fetchClientsData = async () => {
       setIsLoading(true);
-      const fetchedClients = await getClients(); // Fetch all clients initially
+      // Use the renamed server action
+      const fetchedClients = await getClients();
       if (fetchedClients) {
         setClients(fetchedClients);
         setFilteredClients(fetchedClients);
@@ -46,14 +47,12 @@ const ClientCombobox: React.FC<ClientComboboxProps> = ({ onSelect, initialClient
       setIsLoading(false);
     };
 
-    // Only fetch all clients if no initial client is selected
-        if (!initialClientId) {
-            fetchClientsData();
-        }
+    if (!initialClientId) {
+      fetchClientsData();
+    }
   }, [initialClientId]);
 
   useEffect(() => {
-    // Filter clients based on search term
     if (searchTerm) {
       const filtered = clients.filter((client) =>
         client.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -67,7 +66,7 @@ const ClientCombobox: React.FC<ClientComboboxProps> = ({ onSelect, initialClient
   const handleSelect = (clientId: string) => {
     const selectedClient = clients.find((client) => client.id === clientId);
     if (selectedClient) {
-      setSearchTerm(selectedClient.name); // Update the input with the selected client's name
+      setSearchTerm(selectedClient.name);
     }
     onSelect(clientId);
   };
@@ -79,11 +78,11 @@ const ClientCombobox: React.FC<ClientComboboxProps> = ({ onSelect, initialClient
       onSelect={handleSelect}
       searchTerm={searchTerm}
       setSearchTerm={setSearchTerm}
-      displayKey="name" // Display the client's name
-      valueKey="id" // Use the client's ID as the value
+      displayKey="name"
+      valueKey="id"
       placeholder="Search for a client..."
       noResultsMessage="No clients found."
-      label="Select Client" // Add label for accessibility
+      label="Select Client"
     />
   );
 };

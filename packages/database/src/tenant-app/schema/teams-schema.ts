@@ -5,19 +5,21 @@ import { relations } from "drizzle-orm";
 import { users } from "./users-schema";
 // import { notifications } from "./notifications-schema";
 import { cases } from "./case-schema";
-import { teamMembers } from "./team-members-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { teamProfiles } from "./team-profiles-schema";
 
 export const teams = pgTable("teams", {
     id: uuid("id").defaultRandom().primaryKey().notNull(),
-    name: varchar("name", { length: 255 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull().unique('teams_name_unique'),
     description: text("description"),
+    practiceArea: varchar("practice_area", { length: 255 }),
+    department: varchar("department", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' })
         .default(sql`CURRENT_TIMESTAMP`)
         .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: 'string' }),
-	createdBy: uuid("created_by"),
+    createdBy: uuid("created_by"),
     updatedBy: uuid("updated_by"),
     deletedBy: uuid("deleted_by")
 },
@@ -38,7 +40,7 @@ export const teams = pgTable("teams", {
 
 export const teamsRelations = relations(teams, ({ one, many }) => ({
     cases: many(cases),
-    teamMembers: many(teamMembers),
+    teamProfiles: many(teamProfiles),
     // notifications: many(notifications),
     createdByUser: one(users, {
         fields: [teams.createdBy],
@@ -49,7 +51,7 @@ export const teamsRelations = relations(teams, ({ one, many }) => ({
         fields: [teams.updatedBy],
         references: [users.id],
         relationName: "teams_updated_by"
-    })
+    }),
 }));
 
 export type Team = typeof teams.$inferSelect;

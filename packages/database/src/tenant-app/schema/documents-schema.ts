@@ -1,8 +1,15 @@
-import { pgTable, pgSchema } from "drizzle-orm/pg-core";
-import { jsonb, text, timestamp, uuid, integer, boolean, date } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum } from "drizzle-orm/pg-core";
+import { jsonb, text, timestamp, uuid, integer, boolean, date, numeric, bigint } from "drizzle-orm/pg-core";
 import { cases } from "./case-schema";
 import { users } from "./users-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+
+export const uploadStatusEnum = pgEnum("upload_status", [
+  "pending",
+  "uploading",
+  "completed",
+  "failed"
+]);
 
 export const documents = pgTable('documents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -12,13 +19,41 @@ export const documents = pgTable('documents', {
   // Document classification
   documentType: text('document_type').notNull(),
   isTemplate: boolean('is_template').notNull().default(false),
-  status: text('status').notNull().default('draft'),
+  isCourtDocument: boolean('is_court_document').notNull().default(false),
+  typeOfCourtDocument: text('type_of_court_document'),
   language: text('language').notNull().default('es'),
+  
+  // GCloud Storage Information
+  bucketName: text('bucket_name'),
+  objectPath: text('object_path'),
+  objectName: text('object_name'),
+  mimeType: text('mime_type'),
+  size: integer('size'),  // in bytes
+  md5Hash: text('md5_hash'),  // for integrity verification
+  
+  // AI and Search Metadata 
+  textContent: text('text_content'),  // Extracted text for search
+  embedding: jsonb('embedding'),      // Vector embedding for semantic search
+  summary: text('summary'),           // AI-generated summary
+  keyPhrases: jsonb('key_phrases'),   // Extracted key phrases
+  entities: jsonb('entities'),        // Named entities
+  documentStructure: jsonb('document_structure'), // Document structure analysis
+  confidence: numeric('confidence', { precision: 4, scale: 3 }), // OCR/extraction confidence
+  
+  // Storage fields
+  contentType: text('content_type'),
+  uploadStatus: uploadStatusEnum('upload_status').notNull().default("pending"),
+  originalName: text('original_name'),
+  versions: jsonb('versions').$type<{
+    id: string;
+    fileName: string;
+    uploadedAt: string;
+    uploadedBy: string;
+  }[]>().default([]),
   
   // Relationships
   caseId: uuid('case_id').references(() => cases.id),
 
-  
   // Important dates
   effectiveDate: date('effective_date'),
   expirationDate: date('expiration_date'),

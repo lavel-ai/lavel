@@ -7,8 +7,6 @@ export const users = pgTable('users', {
   clerkId: text('clerk_id').unique().notNull(),
   signupStatus: text('signup_status').default('awaiting_org'),
   email: text('email').unique().notNull(),
-  firstName: text('first_name'),
-  lastName: text('last_name'),
   imageUrl: text('image_url'),
   emailVerified: boolean('email_verified').default(false),
   welcomeEmailSent: boolean('welcome_email_sent').default(false),

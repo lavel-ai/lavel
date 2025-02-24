@@ -25,3 +25,7 @@
 
 **/*.meta
 **/package-lock.json
+
+.specstory
+.cursor
+.drizzle

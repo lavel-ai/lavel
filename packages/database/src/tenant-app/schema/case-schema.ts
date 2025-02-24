@@ -17,7 +17,8 @@ import { states } from './states-schema'
 import { caseParties } from './case-parties';
 import { teams } from './teams-schema';
 import { users } from './users-schema';
-
+import { courthouses } from './courthouses-schema';
+import { profiles } from './profiles-schema';
 // Define the cases table with all its fields and relationships
 export const cases = pgTable('cases', {
   // Core Identification
@@ -28,6 +29,7 @@ export const cases = pgTable('cases', {
   // Case location
   stateId: integer('state_id').references(() => states.id),
   cityId: integer('city_id').references(() => cities.id),
+  courthouseId: integer('courthouse_id').references(() => courthouses.id),
 
   // Case Type and Status
   type: text('type').notNull().$type<'advisory' | 'litigation'>(),
@@ -58,7 +60,7 @@ export const cases = pgTable('cases', {
   // References to profiles and teams tables for assignment tracking
   leadAttorneyId: uuid('lead_attorney_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => profiles.id),
   assignedTeamId: uuid('assigned_team_id')
     .notNull()
     .references(() => teams.id),
@@ -119,12 +121,8 @@ export const cases = pgTable('cases', {
   // Audit Trail
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  createdBy: uuid('created_by')
-    .notNull()
-    .references(() => users.id),
-  updatedBy: uuid('updated_by')
-    .notNull()
-    .references(() => users.id),
+  createdBy: uuid('created_by').notNull(),
+  updatedBy: uuid('updated_by').notNull(),
   version: integer('version').default(1),
   deletedAt: timestamp('deleted_at'),
 });
@@ -137,9 +135,9 @@ export const casesRelations = relations(cases, ({ one, many }) => ({
   childCases: many(cases),
 
   // User relationships
-  leadAttorney: one(users, {
+  leadAttorney: one(profiles, {
     fields: [cases.leadAttorneyId],
-    references: [users.id],
+    references: [profiles.id],
   }),
   assignedTeam: one(teams, {
     fields: [cases.assignedTeamId],
@@ -162,6 +160,10 @@ export const casesRelations = relations(cases, ({ one, many }) => ({
     references: [users.id],
   }),
   parties: many(caseParties),
+  courthouse: one(courthouses, {
+    fields: [cases.courthouseId],
+    references: [courthouses.id],
+  }),
 }));
 
 export type Case = typeof cases.$inferSelect;

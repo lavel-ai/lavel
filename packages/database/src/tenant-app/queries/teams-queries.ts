@@ -1,7 +1,7 @@
-import { eq, inArray } from "drizzle-orm";
-import { PostgresError } from "postgres";
+import { eq, inArray, and, isNull } from "drizzle-orm";
 import { teams, teamProfiles, profiles } from "../schema";
 import type { TenantDatabase } from "../tenant-connection-db";
+import { normalizeTeam } from "../utils/normalize/team";
 
 export type CreateTeamInput = {
   name: string;
@@ -99,11 +99,65 @@ export class TeamQueries {
         message: `Equipo "${input.name}" creado exitosamente con ${members.length} miembros`
       };
     } catch (error) {
-      // Handle unique constraint violation
-      if (error instanceof PostgresError && error.code === '23505') {
+      // Check if the error is a unique constraint violation
+      if (error instanceof Error && error.message.includes('teams_name_unique')) {
         throw new Error(`Ya existe un equipo con el nombre "${input.name}"`);
       }
       throw error;
     }
   }
+}
+
+export type TeamWithMembers = {
+  id: string;
+  name: string;
+  description: string | null;
+  practiceArea: string | null;
+  department: string | null;
+  members: {
+    id: string;
+    name: string;
+    lastName: string;
+    maternalLastName: string | null;
+    role: string;
+    practiceArea: string | null;
+    isLeadLawyer: boolean;
+  }[];
+};
+
+export async function queryTeams(db: TenantDatabase) {
+  const teamsWithMembers = await db.query.teams.findMany({
+    where: isNull(teams.deletedAt),
+    with: {
+      teamProfiles: {
+        where: isNull(teamProfiles.deletedAt),
+        with: {
+          profile: true
+        }
+      }
+    }
+  });
+
+  return teamsWithMembers.map(normalizeTeam);
+}
+
+export async function insertTeam(db: TenantDatabase, data: {
+  name: string;
+  description?: string | null;
+  practiceArea?: string | null;
+  department?: string | null;
+  createdBy: string;
+}) {
+  const [team] = await db.insert(teams).values(data).returning();
+  return team;
+}
+
+export async function insertTeamMembers(db: TenantDatabase, data: {
+  teamId: string;
+  profileId: string;
+  role: string;
+  createdBy: string;
+}[]) {
+  const members = await db.insert(teamProfiles).values(data).returning();
+  return members;
 }

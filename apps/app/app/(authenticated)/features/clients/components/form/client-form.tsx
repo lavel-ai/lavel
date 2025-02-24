@@ -1,6 +1,6 @@
 'use client';
 
-import { useMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@repo/design-system/hooks/use-mobile';
 import { useClientForm } from '../hooks/use-client-form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@repo/design-system/components/ui/tabs';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@repo/design-system/components/ui/drawer';
@@ -13,7 +13,7 @@ import { ContactInfoTab } from './tabs/contact-info-tab';
 import { BillingInfoTab } from './tabs/billing-info-tab';
 
 export function ClientForm({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const isMobile = useMobile();
+  const isMobile = useIsMobile();
   const { form, currentTab, setCurrentTab, tabs, getTabStatus, handleSubmit } = useClientForm();
 
   const onSubmit = (data: ClientFormData) => {

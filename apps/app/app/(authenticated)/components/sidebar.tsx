@@ -42,8 +42,8 @@ const data = {
       isActive: true,
     },
     {
-      title: 'Clientes',
-      url: '/customers',
+      title: 'Mi Despacho',
+      url: '/my-firm',
       icon: Building,
     },
     {

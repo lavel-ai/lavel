@@ -7,9 +7,7 @@ import { AvatarStack } from './components/avatar-stack';
 import { Cursors } from './components/cursors';
 import { Header } from './components/header';
 import { TestUserId } from './components/test-user-id';
-// import AdvisoryCasesKPI from './components/kpis/advisory-cases-kpi';
-// import LitigationCasesKPI from './components/kpis/litigation-cases-kpi';
-// import CaseForm from './components/forms/case-form';
+
 
 const title = 'Acme Inc';
 const description = 'My application.';
@@ -46,8 +44,7 @@ const App = async () => {
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         {/* Render KPI components directly */}
         <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-          <AdvisoryCasesKPI />
-          <LitigationCasesKPI />
+
           {/* <CaseForm /> */}
           {/* Add other KPI components here as you create them */}
         </div>

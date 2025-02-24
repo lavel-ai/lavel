@@ -1,0 +1,156 @@
+# My Firm Page Architecture
+
+## Overview
+The My Firm page is a comprehensive dashboard for managing a law firm's teams, lawyers, and clients. It follows Next.js 14 App Router architecture with React Server Components (RSC) for optimal performance and data fetching.
+
+## Database Schema
+
+### Core Tables
+1. **teams**
+   - Primary information about legal teams
+   - Fields: id, name, description, practiceArea, department
+   - Soft delete pattern with deletedAt
+
+2. **profiles**
+   - Lawyer/staff member information
+   - Fields: id, userId, name, lastName, maternalLastName, practiceArea, isLeadLawyer
+   - Connected to auth system via userId
+
+3. **team_profiles**
+   - Junction table connecting teams and profiles
+   - Fields: id, teamId, profileId, role
+   - Ensures unique team membership
+
+## Component Architecture
+
+### Page Layer
+```
+/app/(authenticated)/my-firm/
+├── page.tsx              # Server Component - Data fetching
+├── my-firm-content.tsx   # Client Component - UI and interactivity
+└── components/           # Feature-specific components
+```
+
+### Component Hierarchy
+```
+MyFirmPage (Server)
+├── Header (Client)
+│   └── Breadcrumb Navigation
+└── MyFirmContent (Client)
+    ├── Tabs
+    │   ├── Lawyers Tab
+    │   │   ├── Teams Section
+    │   │   │   ├── TeamCard
+    │   │   │   └── CreateTeamDialog
+    │   │   └── Lawyers Section
+    │   │       └── LawyerCard
+    │   └── Clients Tab
+    │       ├── ClientsTable (Desktop)
+    │       └── ClientCard (Mobile)
+```
+
+## Data Flow
+
+### Server Actions
+1. **Team Management**
+   - `getTeams()`: Fetch teams with member information
+   - `createTeam()`: Create new team
+   - `updateTeam()`: Update team details
+   - `deleteTeam()`: Soft delete team
+
+2. **Lawyer Management**
+   - `getLawyers()`: Fetch all lawyers/profiles
+   - `updateLawyer()`: Update lawyer information
+   - `assignToTeam()`: Manage team membership
+
+### State Management
+- Server state managed through React Server Components
+- UI state (tabs, dialogs) managed locally in client components
+- Mobile/responsive state managed through design system provider
+
+## Features and Implementation
+
+### Teams Section
+- Display teams in grid layout
+- Show team members with avatar stack
+- Team creation through dialog/drawer
+- Team editing capabilities (planned)
+
+### Lawyers Section
+- Display lawyers in grid layout
+- Show key information: name, role, team, practice area
+- Profile editing capabilities (planned)
+
+### Responsive Design
+- Desktop: Grid layouts, full tables
+- Mobile: Single column, cards instead of tables
+- Drawer for mobile forms, dialog for desktop
+
+## Security and Access Control
+
+### RBAC Implementation (Planned)
+- Team management permissions
+- Lawyer profile editing permissions
+- Client data access permissions
+
+## Error Handling and Loading States
+
+### Implementation Plan
+1. Loading skeletons for:
+   - Team cards
+   - Lawyer cards
+   - Client table/cards
+2. Error boundaries for:
+   - Data fetching failures
+   - Form submission errors
+3. Optimistic updates for:
+   - Team creation
+   - Team member assignment
+
+## Future Enhancements
+
+### Planned Features
+1. Advanced team management
+   - Team hierarchy
+   - Sub-teams
+   - Team performance metrics
+
+2. Enhanced lawyer profiles
+   - Skill tracking
+   - Case history
+   - Availability status
+
+3. Client management
+   - Client onboarding
+   - Matter tracking
+   - Billing integration
+
+## Development Guidelines
+
+### Code Organization
+- Server components for data fetching
+- Client components for interactivity
+- Shared UI components from design system
+- Type-safe database queries with Drizzle
+
+### Performance Considerations
+- Server-side rendering for initial load
+- Optimistic updates for better UX
+- Proper error boundary implementation
+- Efficient data fetching patterns
+
+### Testing Strategy
+1. Unit tests for:
+   - Server actions
+   - UI components
+   - Form validation
+
+2. Integration tests for:
+   - Team creation flow
+   - Lawyer assignment
+   - Client management
+
+3. E2E tests for critical paths:
+   - Team creation and management
+   - Lawyer profile updates
+   - Client data handling

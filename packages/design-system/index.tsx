@@ -8,6 +8,7 @@ import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeProvider } from './providers/theme';
 import { ReactQueryProvider } from './providers/react-query';
+import { MobileProvider } from './providers/mobile';
 
 type DesignSystemProviderProps = ThemeProviderProps;
 
@@ -20,8 +21,10 @@ export const DesignSystemProvider = ({
       <AuthProvider>
         <AnalyticsProvider>
           <TooltipProvider>
-            {children}
-            <Toaster />
+            <MobileProvider>
+              {children}
+              <Toaster />
+            </MobileProvider>
           </TooltipProvider>
         </AnalyticsProvider>
       </AuthProvider>
@@ -31,3 +34,4 @@ export const DesignSystemProvider = ({
 
 // Re-export hooks and components
 export { useToast } from './hooks/use-toast';
+export { useIsMobile } from './hooks/use-mobile';

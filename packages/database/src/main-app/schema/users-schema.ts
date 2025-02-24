@@ -23,6 +23,7 @@ export const users = pgTable('users', {
   status: text('status').default('active'),
   lastSignIn: timestamp('last_sign_in', { withTimezone: true }),
   isActive: boolean('is_active').default(true),
+  isDeleted: boolean('is_deleted').default(false),
   metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

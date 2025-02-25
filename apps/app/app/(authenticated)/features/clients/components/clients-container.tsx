@@ -1,99 +1,103 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useIsMobile } from '@repo/design-system/hooks/use-mobile';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from '@repo/design-system/components/ui/card';
+import { Button } from '@repo/design-system/components/ui/button';
 import { ClientsTable } from './clients-table';
 import { ClientCard } from './client-card';
-import { Button } from '@repo/design-system/components/ui/button';
-import { Loader2, Plus } from 'lucide-react';
-import { useToast } from '@repo/design-system/hooks/use-toast';
+import { ClientForm } from './form/client-form';
+import { Plus } from 'lucide-react';
+import { useIsMobile } from '@repo/design-system/hooks/use-mobile';
 
-// This is a temporary type until we finalize the client actions
-type Client = {
-  id: string;
-  legalName: string;
-  category: string;
-  status: string;
-  contactPerson?: string;
-  email?: string;
-  industry?: string;
-};
-
-interface ClientsContainerProps {
-  initialClients: Client[];
+export interface ClientsContainerProps {
+  clients: any[];
+  totalClients: number;
 }
 
-export function ClientsContainer({ initialClients }: ClientsContainerProps) {
-  const [clients, setClients] = useState<Client[]>(initialClients);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+export function ClientsContainer({ clients, totalClients }: ClientsContainerProps) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<string | undefined>();
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
+  const router = useRouter();
   const isMobile = useIsMobile();
-  const { toast } = useToast();
+
+  const handleCreateClient = () => {
+    setFormMode('create');
+    setSelectedClientId(undefined);
+    setFormOpen(true);
+  };
 
   const handleEditClient = (clientId: string) => {
-    console.log('Edit client:', clientId);
-    // Future implementation: Open edit form
+    setFormMode('edit');
+    setSelectedClientId(clientId);
+    setFormOpen(true);
   };
 
-  const handleDeleteClient = (clientId: string) => {
-    console.log('Delete client:', clientId);
-    // Future implementation: Delete client
+  const handleFormClose = () => {
+    setFormOpen(false);
+    // Refresh data when form closes
+    router.refresh();
   };
-
-  // Convert data for display in the table or card
-  const clientsForDisplay = clients.map(client => ({
-    id: client.id,
-    name: client.legalName,
-    industry: client.category,
-    contactPerson: client.contactPerson || 'Not specified',
-    email: client.email || 'Not specified',
-    status: client.status
-  }));
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Clients</h2>
-        <Button 
-          onClick={() => setIsCreateFormOpen(true)}
-          size="sm"
-          className="gap-1"
-        >
-          <Plus className="h-4 w-4" />
-          Add Client
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : clients.length === 0 ? (
-        <div className="text-center p-8 border rounded-md bg-muted/10">
-          <p className="text-muted-foreground">No clients found. Add your first client to get started.</p>
-        </div>
-      ) : isMobile ? (
-        <div className="grid grid-cols-1 gap-4">
-          {clientsForDisplay.map((client) => (
-            <ClientCard
-              key={client.id}
-              name={client.name}
-              industry={client.industry}
-              contactPerson={client.contactPerson}
-              email={client.email}
-              status={client.status}
-              onEdit={() => handleEditClient(client.id)}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Clients</CardTitle>
+            <CardDescription>
+              Manage your client relationships
+            </CardDescription>
+          </div>
+          <Button onClick={handleCreateClient}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Client
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isMobile ? (
+            <div className="space-y-4">
+              {clients.map((client) => (
+                <ClientCard 
+                  key={client.id} 
+                  name={client.legalName}
+                  industry={client.category}
+                  contactPerson={client.contactPerson || 'Not specified'}
+                  email={client.email || 'Not specified'}
+                  status={client.status}
+                  onEdit={() => handleEditClient(client.id)} 
+                />
+              ))}
+              {clients.length === 0 && (
+                <p className="text-center text-muted-foreground py-4">
+                  No clients found. Create your first client by clicking the "Add Client" button.
+                </p>
+              )}
+            </div>
+          ) : (
+            <ClientsTable 
+              clients={clients} 
+              onEdit={handleEditClient} 
             />
-          ))}
-        </div>
-      ) : (
-        <ClientsTable 
-          clients={clientsForDisplay} 
-          onEdit={handleEditClient} 
-        />
-      )}
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Client form dialog can be added here */}
+      <ClientForm 
+        open={formOpen}
+        onOpenChange={handleFormClose}
+        mode={formMode}
+        clientId={selectedClientId}
+        // We would need to fetch the client data if editing
+        // initialData={selectedClientData}
+      />
     </div>
   );
 } 

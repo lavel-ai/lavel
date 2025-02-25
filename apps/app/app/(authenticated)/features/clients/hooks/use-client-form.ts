@@ -12,7 +12,7 @@ export type TabValidation = {
 
 export type TabStatus = Record<string, TabValidation>;
 
-export function useClientForm() {
+export function useClientForm(initialValues?: Partial<ClientFormData>) {
   // Define the tabs for the form
   const tabs = ['general', 'lawFirm', 'contact', 'billing'];
   const [currentTab, setCurrentTab] = useState('general');
@@ -20,7 +20,7 @@ export function useClientForm() {
   // Initialize the form with default values and zod validation
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientFormSchema),
-    defaultValues: defaultFormValues as any,
+    defaultValues: initialValues ? { ...defaultFormValues, ...initialValues } as any : defaultFormValues as any,
     mode: 'onChange',
   });
 

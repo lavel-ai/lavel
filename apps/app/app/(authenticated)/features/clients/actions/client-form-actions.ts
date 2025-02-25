@@ -5,38 +5,109 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { 
   clients,
-  type InsertClient,
   addressSchema,
   contactSchema,
-  clientInsertSchema,
+  addresses,
+  contacts,
+  clientContacts,
+  clientAddresses,
 } from '@repo/database/src/tenant-app/schema';
-import { temporaryClientQueries, clientQueries } from '@repo/database/src/tenant-app/queries/clients-queries';
+import { type Client } from '@repo/database/src/tenant-app/schema/clients-schema';
+import { type Address } from '@repo/database/src/tenant-app/schema/addresses-schema';
+import { type Contact } from '@repo/database/src/tenant-app/schema/contacts-schema';
 import { type PgTransaction } from 'drizzle-orm/pg-core';
 import { type TenantDatabase } from '@repo/database/src/tenant-app/tenant-connection-db';
-import { eq } from 'drizzle-orm';
+import { eq, and, lt } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { getInternalUserId } from '@/app/actions/users/user-actions';
-// Define the combined schema that matches our form structure
-const clientFormSchema = z.object({
-  id: z.string().uuid().optional(), // For temporary client ID
-  clientType: z.enum(['person', 'company']),
-  // Person-specific fields
-  name: z.string().optional(),
-  parentLastName: z.string().optional(),
-  maternalLastName: z.string().optional(),
-  // Company-specific fields
-  companyName: z.string().optional(),
-  rfc: z.string().optional(),
-  // Common fields
-  corporationId: z.string().uuid().optional(),
-  isActive: z.boolean(),
-  addresses: z.array(addressSchema),
-  contacts: z.array(contactSchema),
+
+// --- Form Schema Definitions ---
+
+// Define a more flexible status field that accommodates both form and DB values
+const statusSchema = z.enum(['prospect', 'active', 'inactive', 'archived', 'draft']);
+const clientTypeSchema = z.enum(['fisica', 'moral', 'person', 'company'])
+  .transform(val => {
+    // Transform form values to DB values
+    if (val === 'person') return 'fisica' as const;
+    if (val === 'company') return 'moral' as const;
+    return val;
+  });
+
+// Corporation schema
+const corporationSchema = z.object({
+  name: z.string(),
+  constitutionDate: z.string().optional(),
+  notaryNumber: z.number().nullable(),
+  notaryState: z.string().optional(),
+  instrumentNumber: z.string().optional(),
+  notes: z.string().optional(),
+  createdBy: z.string().optional(),
+  updatedBy: z.string().optional(),
+  clientId: z.string().optional(),
 });
 
-type ClientFormData = z.infer<typeof clientInsertSchema>;
-type Transaction = PgTransaction<any, any, any>;
+// Billing information schema
+const billingSchema = z.object({
+  name: z.string().optional(),
+  rfc: z.string().optional(),
+  billingCurrency: z.string().optional(),
+  billingTerms: z.string().optional(),
+  email: z.string().optional(),
+});
+
+// Combined form schema that matches our form structure
+const clientFormSchema = z.object({
+  id: z.string().uuid().optional(),
+  clientType: clientTypeSchema,
+  legalName: z.string(),
+  taxId: z.string().optional(),
+  category: z.enum(['litigio', 'consultoria', 'corporativo', 'otros']).optional(),
+  isConfidential: z.boolean().optional(),
+  preferredLanguage: z.string().optional(),
+  notes: z.string().optional(),
+  status: statusSchema.optional(),
+  corporations: z.array(corporationSchema).optional(),
+  addresses: z.array(addressSchema),
+  contactInfo: z.array(contactSchema).optional(),
+  portalAccess: z.boolean().optional(),
+  portalAccessEmail: z.string().optional(),
+  billing: billingSchema.optional(),
+  primaryLawyerId: z.string().optional(),
+});
+
+type ClientFormData = z.infer<typeof clientFormSchema>;
+
+// --- Helper Functions ---
+
+// Transforms client form data to match DB schema
+function transformClientData(formData: ClientFormData, userId: string): Omit<Client, 'id' | 'createdAt' | 'updatedAt'> {
+  // Map form values to DB values
+  return {
+    clientType: formData.clientType as 'fisica' | 'moral',
+    legalName: formData.legalName,
+    taxId: formData.taxId || '',
+    category: formData.category || 'otros',
+    isConfidential: formData.isConfidential || false,
+    primaryLawyerId: formData.primaryLawyerId || null,
+    status: (formData.status === 'draft' ? 'prospect' : formData.status) as 'prospect' | 'active' | 'inactive' | 'archived',
+    preferredLanguage: formData.preferredLanguage || 'es-MX',
+    portalAccess: formData.portalAccess || false,
+    portalAccessEmail: formData.portalAccessEmail || null,
+    billingTerms: formData.billing?.billingTerms || null,
+    billingCurrency: formData.billing?.billingCurrency || 'MXN',
+    notes: formData.notes || null,
+    createdBy: userId,
+    updatedBy: userId,
+    deletedAt: null,
+    deletedBy: null,
+  };
+}
 
 // --- Temporary Client Actions ---
+
+/**
+ * Creates a temporary client record with draft status
+ */
 export async function createTemporaryClientAction(formData: Partial<ClientFormData>) {
   const userId = await getInternalUserId();
   if (!userId) {
@@ -50,7 +121,7 @@ export async function createTemporaryClientAction(formData: Partial<ClientFormDa
 
   try {
     // Validate the partial form data
-    const validatedData = clientInsertSchema.partial().safeParse(formData);
+    const validatedData = clientFormSchema.partial().safeParse(formData);
     if (!validatedData.success) {
       return {
         status: 'error' as const,
@@ -59,15 +130,25 @@ export async function createTemporaryClientAction(formData: Partial<ClientFormDa
       };
     }
 
-    const result = await temporaryClientQueries.create(tenantDb, {
-      userId,
-      formData: validatedData.data,
-    });
+    // Create basic client with draft status
+    const [newClient] = await tenantDb.insert(clients)
+      .values({
+        clientType: (validatedData.data.clientType || 'fisica') as 'fisica' | 'moral',
+        legalName: validatedData.data.legalName || 'Draft Client',
+        taxId: validatedData.data.taxId || '',
+        status: 'prospect',  // Use valid status value from schema
+        preferredLanguage: validatedData.data.preferredLanguage || 'es-MX',
+        createdBy: userId,
+        updatedBy: userId,
+        // Add expiry for draft clients
+        // expiresAt is missing in the schema, so we're not using it
+      })
+      .returning();
 
     return {
       status: 'success' as const,
       message: 'Temporary client created',
-      data: { client: result[0] },
+      data: { client: newClient },
     };
   } catch (error) {
     console.error('Error creating temporary client:', error);
@@ -78,6 +159,9 @@ export async function createTemporaryClientAction(formData: Partial<ClientFormDa
   }
 }
 
+/**
+ * Retrieves the most recent temporary (draft) client for the current user
+ */
 export async function getTemporaryClientAction() {
   const userId = await getInternalUserId();
   if (!userId) {
@@ -91,10 +175,11 @@ export async function getTemporaryClientAction() {
 
   try {
     // Get the most recent temporary client for this user
+    // Use proper syntax for status field
     const result = await tenantDb.query.clients.findFirst({
       where: (clients, { and, eq }) => and(
         eq(clients.createdBy, userId),
-        eq(clients.status, 'draft')
+        eq(clients.status, 'prospect') // Use valid status value
       ),
       orderBy: (clients, { desc }) => [desc(clients.createdAt)],
       with: {
@@ -123,6 +208,9 @@ export async function getTemporaryClientAction() {
   }
 }
 
+/**
+ * Updates a temporary client with partial form data
+ */
 export async function updateTemporaryClientAction(
   id: string,
   formData: Partial<ClientFormData>
@@ -139,7 +227,7 @@ export async function updateTemporaryClientAction(
 
   try {
     // Validate the partial form data
-    const validatedData = clientInsertSchema.partial().safeParse(formData);
+    const validatedData = clientFormSchema.partial().safeParse(formData);
     if (!validatedData.success) {
       return {
         status: 'error' as const,
@@ -148,16 +236,25 @@ export async function updateTemporaryClientAction(
       };
     }
 
-    const result = await temporaryClientQueries.update(tenantDb, {
-      id,
-      userId,
-      formData: validatedData.data,
-    });
+    // Transform client data to match DB schema
+    const clientData = transformClientData({
+      ...validatedData.data,
+      status: 'prospect', // Use valid status value
+    } as ClientFormData, userId);
+
+    // Update only the client record, not the related entities
+    const [updatedClient] = await tenantDb.update(clients)
+      .set({
+        ...clientData,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(clients.id, id))
+      .returning();
 
     return {
       status: 'success' as const,
       message: 'Temporary client updated',
-      data: { client: result[0] },
+      data: { client: updatedClient },
     };
   } catch (error) {
     console.error('Error updating temporary client:', error);
@@ -168,8 +265,10 @@ export async function updateTemporaryClientAction(
   }
 }
 
-// --- Main Client Actions ---
-export async function createClient(formData: ClientFormData) {
+/**
+ * Creates a new client with complete form data, handling all related entities in a transaction
+ */
+export async function createClientAction(formData: ClientFormData) {
   const { userId } = await auth();
   if (!userId) {
     return {
@@ -181,8 +280,8 @@ export async function createClient(formData: ClientFormData) {
   const tenantDb = await getTenantDbClientUtil();
 
   try {
-    // Validate the entire form data
-    const validatedData = clientInsertSchema.safeParse(formData);
+    // Validate the form data
+    const validatedData = clientFormSchema.safeParse(formData);
     if (!validatedData.success) {
       return {
         status: 'error' as const,
@@ -191,81 +290,85 @@ export async function createClient(formData: ClientFormData) {
       };
     }
 
-    // Start transaction
+    // Execute all operations in a transaction
     return await tenantDb.transaction(async (tx) => {
       try {
-        // 1. Create the base client
-        const [newClient] = await clientQueries.create(tx as unknown as TenantDatabase, {
-          userId,
-          client: {
-            legalName: validatedData.data.legalName,
-            clientType: validatedData.data.clientType ?? 'person',
-            status: validatedData.data.status ?? 'draft',
-            isActive: validatedData.data.isActive ?? true,
-            portalAccess: validatedData.data.portalAccess ?? false,
-            firstName: validatedData.data.firstName ?? null,
-            lastName: validatedData.data.lastName ?? null,
-            maternalLastName: validatedData.data.maternalLastName ?? null,
-            description: validatedData.data.description ?? null,
-            preferredLanguage: validatedData.data.preferredLanguage ?? null,
-            billingEmail: validatedData.data.billingEmail ?? null,
-            portalAccessEmail: validatedData.data.portalAccessEmail ?? null,
-            primaryTeamId: validatedData.data.primaryTeamId ?? null,
-            taxId: validatedData.data.taxId ?? null,
-            paymentTerms: validatedData.data.paymentTerms ?? null,
-            preferredCurrency: validatedData.data.preferredCurrency ?? null,
-            billingAddressId: null,
-            createdBy: userId,
-            updatedBy: userId,
-            deletedAt: null,
-            deletedBy: null,
-            expiresAt: null,
-            lastModified: new Date().toISOString(),
-          } satisfies Omit<InsertClient, 'id' | 'createdAt' | 'updatedAt'>,
-        });
+        // 1. Create the client record
+        const clientData = transformClientData(validatedData.data, userId);
+        const [newClient] = await tx.insert(clients)
+          .values({
+            ...clientData,
+            status: validatedData.data.status === 'draft' ? 'active' : (validatedData.data.status || 'active'),
+          })
+          .returning();
 
-        // 2. Create addresses if provided
-        const addresses = validatedData.data.billingAddress ? [validatedData.data.billingAddress] : [];
-        if (addresses.length) {
-          for (const address of addresses) {
-            // Validate address data
-            const validatedAddress = addressSchema.safeParse(address);
-            if (!validatedAddress.success) {
-              throw new Error(`Invalid address data: ${validatedAddress.error.message}`);
-            }
+        // 2. Create addresses
+        if (validatedData.data.addresses && validatedData.data.addresses.length > 0) {
+          for (const addressData of validatedData.data.addresses) {
+            // Insert address
+            const [newAddress] = await tx.insert(addresses)
+              .values({
+                street: addressData.street,
+                city: addressData.city,
+                state: addressData.state,
+                zipCode: addressData.zipCode,
+                country: addressData.country,
+                addressType: addressData.addressType || null,
+                isPrimary: addressData.isPrimary || false,
+                isBilling: addressData.isBilling || false,
+                createdBy: userId,
+                updatedBy: userId,
+              })
+              .returning();
 
-            await clientQueries.createAddress(tx as unknown as TenantDatabase, {
-              userId,
-              clientId: newClient.id,
-              address: validatedAddress.data,
-              isPrimary: true,
-              isBilling: true,
-            });
+            // Create client-address relation
+            await tx.insert(clientAddresses)
+              .values({
+                clientId: newClient.id,
+                addressId: newAddress.id,
+                createdBy: userId,
+                updatedBy: userId,
+              });
           }
         }
 
-        // 3. Create contacts if provided
-        const contacts = validatedData.data.contactInfo ?? [];
-        if (contacts.length) {
-          for (const contact of contacts) {
-            // Validate contact data
-            const validatedContact = contactSchema.safeParse(contact);
-            if (!validatedContact.success) {
-              throw new Error(`Invalid contact data: ${validatedContact.error.message}`);
-            }
+        // 3. Create contacts
+        if (validatedData.data.contactInfo && validatedData.data.contactInfo.length > 0) {
+          for (const contactData of validatedData.data.contactInfo) {
+            // Insert contact
+            const [newContact] = await tx.insert(contacts)
+              .values({
+                contactName: contactData.contactName,
+                email: contactData.email,
+                primaryPhone: contactData.primaryPhone,
+                secondaryPhone: contactData.secondaryPhone || null,
+                extension: contactData.extension || null,
+                role: contactData.role || null,
+                preferredContactMethod: contactData.preferredContactMethod || 'any',
+                isPrimary: contactData.isPrimary || false,
+                createdBy: userId,
+                updatedBy: userId,
+              })
+              .returning();
 
-            await clientQueries.createContact(tx as unknown as TenantDatabase, {
-              userId,
-              clientId: newClient.id,
-              contact: validatedContact.data,
-              isPrimary: contact.isPrimary,
-            });
+            // Create client-contact relation
+            await tx.insert(clientContacts)
+              .values({
+                clientId: newClient.id,
+                contactId: newContact.id,
+                createdBy: userId,
+                updatedBy: userId,
+              });
           }
         }
 
-        // 4. Delete temporary client if this was a conversion
+        // 4. Create corporations if client type is moral
+        // This would require additional tables not shown in the provided files
+
+        // 5. Delete temporary client if converting from draft
         if (validatedData.data.id) {
-          await temporaryClientQueries.cleanup(tx as unknown as TenantDatabase);
+          await tx.delete(clients)
+            .where(eq(clients.id, validatedData.data.id));
         }
 
         return {
@@ -274,7 +377,7 @@ export async function createClient(formData: ClientFormData) {
           data: { client: newClient },
         };
       } catch (error) {
-        // Transaction will automatically rollback
+        // Transaction will automatically roll back
         throw error;
       }
     });
@@ -290,7 +393,180 @@ export async function createClient(formData: ClientFormData) {
   }
 }
 
-// Add a helper function to delete temporary client
+/**
+ * Updates an existing client with complete form data
+ */
+export async function updateClientAction(id: string, formData: ClientFormData) {
+  const { userId } = await auth();
+  if (!userId) {
+    return {
+      status: 'error' as const,
+      message: 'Unauthorized',
+    };
+  }
+
+  const tenantDb = await getTenantDbClientUtil();
+
+  try {
+    // Validate the form data
+    const validatedData = clientFormSchema.safeParse(formData);
+    if (!validatedData.success) {
+      return {
+        status: 'error' as const,
+        message: 'Invalid form data',
+        errors: validatedData.error.flatten().fieldErrors,
+      };
+    }
+
+    // Execute all operations in a transaction
+    return await tenantDb.transaction(async (tx) => {
+      try {
+        // 1. Update the client record
+        const clientData = transformClientData(validatedData.data, userId);
+        const [updatedClient] = await tx.update(clients)
+          .set({
+            ...clientData,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(clients.id, id))
+          .returning();
+
+        // 2. Handle addresses - delete existing and create new
+        // First delete existing client-address relations
+        await tx.delete(clientAddresses)
+          .where(eq(clientAddresses.clientId, id));
+
+        // Create new addresses
+        if (validatedData.data.addresses && validatedData.data.addresses.length > 0) {
+          for (const addressData of validatedData.data.addresses) {
+            // Insert address
+            const [newAddress] = await tx.insert(addresses)
+              .values({
+                street: addressData.street,
+                city: addressData.city,
+                state: addressData.state,
+                zipCode: addressData.zipCode,
+                country: addressData.country,
+                addressType: addressData.addressType || null,
+                isPrimary: addressData.isPrimary || false,
+                isBilling: addressData.isBilling || false,
+                createdBy: userId,
+                updatedBy: userId,
+              })
+              .returning();
+
+            // Create client-address relation
+            await tx.insert(clientAddresses)
+              .values({
+                clientId: updatedClient.id,
+                addressId: newAddress.id,
+                createdBy: userId,
+                updatedBy: userId,
+              });
+          }
+        }
+
+        // 3. Handle contacts - delete existing and create new
+        // First delete existing client-contact relations
+        await tx.delete(clientContacts)
+          .where(eq(clientContacts.clientId, id));
+
+        // Create new contacts
+        if (validatedData.data.contactInfo && validatedData.data.contactInfo.length > 0) {
+          for (const contactData of validatedData.data.contactInfo) {
+            // Insert contact
+            const [newContact] = await tx.insert(contacts)
+              .values({
+                contactName: contactData.contactName,
+                email: contactData.email,
+                primaryPhone: contactData.primaryPhone,
+                secondaryPhone: contactData.secondaryPhone || null,
+                extension: contactData.extension || null,
+                role: contactData.role || null,
+                preferredContactMethod: contactData.preferredContactMethod || 'any',
+                isPrimary: contactData.isPrimary || false,
+                createdBy: userId,
+                updatedBy: userId,
+              })
+              .returning();
+
+            // Create client-contact relation
+            await tx.insert(clientContacts)
+              .values({
+                clientId: updatedClient.id,
+                contactId: newContact.id,
+                createdBy: userId,
+                updatedBy: userId,
+              });
+          }
+        }
+
+        return {
+          status: 'success' as const,
+          message: 'Client updated successfully',
+          data: { client: updatedClient },
+        };
+      } catch (error) {
+        // Transaction will automatically roll back
+        throw error;
+      }
+    });
+  } catch (error) {
+    console.error('Error updating client:', error);
+    return {
+      status: 'error' as const,
+      message: error instanceof Error ? error.message : 'Failed to update client',
+    };
+  } finally {
+    // Revalidate the clients page to reflect changes
+    revalidatePath('/clients');
+  }
+}
+
+/**
+ * Deletes a client (soft delete)
+ */
+export async function deleteClientAction(id: string) {
+  const { userId } = await auth();
+  if (!userId) {
+    return {
+      status: 'error' as const,
+      message: 'Unauthorized',
+    };
+  }
+
+  const tenantDb = await getTenantDbClientUtil();
+
+  try {
+    // Soft delete
+    const [deletedClient] = await tenantDb.update(clients)
+      .set({
+        deletedAt: new Date().toISOString(),
+        deletedBy: userId,
+        updatedAt: new Date().toISOString(),
+        updatedBy: userId,
+      })
+      .where(eq(clients.id, id))
+      .returning();
+
+    return {
+      status: 'success' as const,
+      message: 'Client deleted successfully',
+      data: { client: deletedClient },
+    };
+  } catch (error) {
+    console.error('Error deleting client:', error);
+    return {
+      status: 'error' as const,
+      message: error instanceof Error ? error.message : 'Failed to delete client',
+    };
+  } finally {
+    // Revalidate the clients page to reflect changes
+    revalidatePath('/clients');
+  }
+}
+
+// Add a helper function to delete temporary client permanently
 export async function deleteTemporaryClientAction(clientId: string) {
   const { userId } = await auth();
   if (!userId) {
@@ -315,6 +591,37 @@ export async function deleteTemporaryClientAction(clientId: string) {
     return {
       status: 'error',
       message: 'Failed to delete temporary client',
+    };
+  }
+}
+
+// Cleanup expired temporary clients (can be used in a cron job)
+export async function cleanupTemporaryClientsAction() {
+  const tenantDb = await getTenantDbClientUtil();
+
+  try {
+    // Delete clients older than 48 hours
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    
+    const deleted = await tenantDb.delete(clients)
+      .where(
+        and(
+          eq(clients.status, 'prospect'),
+          lt(clients.createdAt, twoDaysAgo.toISOString())
+        )
+      )
+      .returning({ id: clients.id });
+
+    return {
+      status: 'success',
+      message: `${deleted.length} temporary clients cleaned up`,
+    };
+  } catch (error) {
+    console.error('Error cleaning up temporary clients:', error);
+    return {
+      status: 'error',
+      message: 'Failed to clean up temporary clients',
     };
   }
 }

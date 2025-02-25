@@ -1,0 +1,214 @@
+# Responsive UI Design Guidelines for Lavel AI
+
+## Core Design Principles
+
+### Minimalist Interface
+- Use whitespace strategically to create breathing room between elements.
+- Limit color palette to neutral tones with strategic accent colors for important actions.
+- Maintain consistent spacing and alignment throughout the application.
+
+### Responsive Layout Strategy
+- Implement a mobile-first approach for all components.
+- Use the `useIsMobile` hook to conditionally render appropriate UI elements.
+- Ensure form layouts adapt gracefully across device sizes.
+
+### Accessibility & Usability
+- Design interfaces that are intuitive and require minimal cognitive load.
+- Provide clear visual feedback for all interactions.
+- Ensure adequate contrast for text elements.
+- Implement proper focus states for keyboard navigation.
+
+## Component-Specific Guidelines
+
+### Forms
+
+#### Structure & Organization
+- Break forms into logical sections with clear headings.
+- Group related fields together with consistent spacing.
+- Use multi-step forms for complex data entry.
+- Implement progress indicators for multi-step forms.
+
+#### Form Fields
+- Use appropriate field types (text, select, checkbox, etc.).
+- Provide clear, concise labels for all form fields.
+- Add helper text to explain complex fields.
+- Indicate required fields consistently.
+
+#### Responsive Considerations
+- Stack form fields vertically on mobile.
+- Use a two-column layout for wider screens where appropriate.
+- Ensure touch targets are at least 44x44px on mobile.
+
+### Tables & Data Display
+
+#### Card-Based Layouts
+- Replace traditional tables with card layouts on mobile.
+- Use grid layouts for cards with appropriate gap spacing.
+- Implement virtualization for long lists.
+
+#### Data Visualization
+- Ensure charts and graphs are responsive.
+- Provide alternative views for complex data on small screens.
+- Use tooltips to reveal additional information.
+
+### Navigation & Layout
+
+#### Adaptive Navigation
+- Implement collapsible sidebar for desktop.
+- Use bottom navigation for mobile.
+- Ensure navigation elements are easily accessible.
+
+#### Modal & Dialog Usage
+- Use Dialog component on desktop.
+- Use Drawer component on mobile (bottom sheet).
+- Ensure modals are dismissible through multiple methods.
+
+## Implementation Patterns
+
+### Mobile Detection
+```typescript
+const isMobile = useIsMobile();
+
+// Conditionally render different components
+return isMobile ? (
+  <Drawer open={open} onOpenChange={setOpen}>
+    {/* Content */}
+  </Drawer>
+) : (
+  <Dialog open={open} onOpenChange={setOpen}>
+    {/* Content */}
+  </Dialog>
+);
+```
+
+### Responsive Grids
+```tsx
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {items.map(item => (
+    <Card key={item.id} className="h-full">
+      {/* Card content */}
+    </Card>
+  ))}
+</div>
+```
+
+### Form Section Pattern
+```tsx
+<div className="space-y-6">
+  <div>
+    <h3 className="text-lg font-medium">Section Title</h3>
+    <p className="text-sm text-muted-foreground">
+      Brief description of this section
+    </p>
+  </div>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {/* Form fields */}
+  </div>
+</div>
+```
+
+### User Feedback
+```tsx
+// Success toast
+toast({
+  title: "Success",
+  description: "Operation completed successfully",
+  variant: "default",
+});
+
+// Error toast
+toast({
+  title: "Error",
+  description: "Something went wrong",
+  variant: "destructive",
+});
+```
+
+## Animation & Transition Guidelines
+
+### Subtle Transitions
+- Use subtle animations for state changes (hover, focus, etc.).
+- Keep transition durations between 150-300ms.
+- Use easing functions for natural movement.
+
+### Loading States
+- Implement skeleton loading states for content.
+- Use subtle animations for loading indicators.
+- Provide visual feedback during async operations.
+
+### Responsive Animations
+- Reduce or simplify animations on mobile devices.
+- Ensure animations don't interfere with performance.
+
+## Example Patterns
+
+### Card Component
+```tsx
+<Card className="hover:shadow-lg transition-shadow">
+  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+    <div>
+      <h3 className="font-semibold">{title}</h3>
+      <p className="text-sm text-muted-foreground">{subtitle}</p>
+    </div>
+    <Button variant="ghost" size="icon" onClick={onAction}>
+      <Icon className="h-4 w-4" />
+    </Button>
+  </CardHeader>
+  <CardContent>
+    <div className="space-y-2">
+      {/* Card content */}
+    </div>
+  </CardContent>
+</Card>
+```
+
+### Multi-Step Form Progress
+```tsx
+<div className="mt-2 mb-6">
+  <div className="flex items-center justify-between mb-2">
+    <div className="text-sm text-muted-foreground">
+      Progress
+    </div>
+    <div className="text-sm text-muted-foreground">
+      {completedSteps} of {totalSteps} completed
+    </div>
+  </div>
+  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+    <div
+      className="h-full bg-primary transition-all duration-500 ease-in-out"
+      style={{ width: `${progress}%` }}
+    />
+  </div>
+</div>
+```
+
+### Responsive Dialog/Drawer
+```tsx
+const Wrapper = isMobile ? Drawer : Dialog;
+const WrapperContent = isMobile ? DrawerContent : DialogContent;
+const WrapperHeader = isMobile ? DrawerHeader : DialogHeader;
+const WrapperTitle = isMobile ? DrawerTitle : DialogTitle;
+
+return (
+  <Wrapper open={open} onOpenChange={onOpenChange}>
+    <WrapperContent>
+      <WrapperHeader>
+        <WrapperTitle>{title}</WrapperTitle>
+      </WrapperHeader>
+      <div className="p-4">
+        {/* Content */}
+      </div>
+    </WrapperContent>
+  </Wrapper>
+);
+```
+
+## Accessibility Checklist
+- Ensure proper heading hierarchy (`h1`, `h2`, `h3`, etc.).
+- Use semantic HTML elements.
+- Provide sufficient color contrast.
+- Ensure all interactive elements are keyboard accessible.
+- Add appropriate ARIA attributes where needed.
+- Test with screen readers.
+

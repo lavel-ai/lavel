@@ -5,14 +5,14 @@ import { cn } from "@repo/design-system/lib/utils";
 import { TeamMemberBasicInfo } from "@/app/(authenticated)/features/shared/actions/team-members-actions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@repo/design-system/components/ui/select";
 
-interface LawyerCardProps {
+interface TeamMemberSelectionCardProps {
   lawyer: TeamMemberBasicInfo;
   isSelected: boolean;
   onSelect: (lawyerId: string, role?: 'leader' | 'member') => void;
   disabled?: boolean;
 }
 
-export function LawyerCard({ lawyer, isSelected, onSelect, disabled }: LawyerCardProps) {
+export function TeamMemberSelectionCard({ lawyer, isSelected, onSelect, disabled }: TeamMemberSelectionCardProps) {
   return (
     <Card
       className={cn(

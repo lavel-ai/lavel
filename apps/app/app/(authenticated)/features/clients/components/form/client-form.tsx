@@ -1,20 +1,21 @@
 'use client';
 
 import { useIsMobile } from '@repo/design-system/hooks/use-mobile';
-import { useClientForm } from '../hooks/use-client-form';
+import { useClientForm } from '../../hooks/use-client-form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@repo/design-system/components/ui/tabs';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@repo/design-system/components/ui/drawer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@repo/design-system/components/ui/dialog';
 import { Button } from '@repo/design-system/components/ui/button';
-import { ProgressIndicator } from './progress-indicator';
+import { ProgressIndicator } from '../../../shared/progress/progress-indicator';
 import { GeneralDataTab } from './tabs/general-data-tab';
 import { LawFirmDataTab } from './tabs/law-firm-data-tab';
 import { ContactInfoTab } from './tabs/contact-info-tab';
 import { BillingInfoTab } from './tabs/billing-info-tab';
+import { ClientFormData } from '../../validation/schemas';
 
 export function ClientForm({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const isMobile = useIsMobile();
-  const { form, currentTab, setCurrentTab, tabs, getTabStatus, handleSubmit } = useClientForm();
+  const { form, currentTab, setCurrentTab, tabs, getTabStatus } = useClientForm();
 
   const onSubmit = (data: ClientFormData) => {
     console.log('Form Submitted:', data);
@@ -44,7 +45,14 @@ export function ClientForm({ open, onOpenChange }: { open: boolean; onOpenChange
                 </TabsTrigger>
               ))}
             </TabsList>
-            <ProgressIndicator tabs={tabs} getTabStatus={getTabStatus} />
+            <div className="mt-4">
+              <ProgressIndicator 
+                tabs={tabs.reduce((acc, tab) => {
+                  acc[tab] = getTabStatus(tab);
+                  return acc;
+                }, {} as Record<string, { isComplete: boolean; hasErrors: boolean }>)} 
+              />
+            </div>
             <TabsContent value="general">
               <GeneralDataTab form={form} />
             </TabsContent>

@@ -1,5 +1,5 @@
 import { teamProfiles, teams, profiles } from "../../schema";
-import { TeamWithMembers } from "../../queries/teams-queries";
+import { TeamWithMembers } from "../../queries/teams";
 
 export function normalizeTeam(team: typeof teams.$inferSelect & {
   teamProfiles: (typeof teamProfiles.$inferSelect & {

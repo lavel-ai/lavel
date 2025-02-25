@@ -16,46 +16,105 @@ import {
   DrawerTrigger,
 } from "@repo/design-system/components/ui/drawer";
 import { useIsMobile } from "@repo/design-system/hooks/use-mobile";
+import { useToast } from "@repo/design-system/hooks/use-toast";
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { TeamMemberBasicInfo } from "@/app/(authenticated)/features/shared/actions/team-members-actions";
 import { TeamFormClient } from "./team-form";
+import type { LawyerProfile } from "../../lawyers/actions/lawyer-actions";
+import type { TeamMemberBasicInfo } from "../../shared/actions/team-members-actions";
+import { createTeam } from "../actions/team-actions";
 
 interface CreateTeamDialogProps {
-  users: TeamMemberBasicInfo[];
-  createTeam: (data: any) => Promise<{ success: boolean; teamId: string }>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  availableLawyers: LawyerProfile[];
 }
 
-export function CreateTeamDialog({ users, createTeam }: CreateTeamDialogProps) {
+export function CreateTeamDialog({ open, onOpenChange, availableLawyers }: CreateTeamDialogProps) {
   const isMobile = useIsMobile();
-  const [isOpen, setIsOpen] = useState(false);
+  const { toast } = useToast();
 
   // Show nothing while detecting mobile state
   if (typeof isMobile === 'undefined') {
-    return (
-      <Button disabled>
-        <Plus className="h-4 w-4 mr-2" />
-        Create Team
-      </Button>
-    );
+    return null;
   }
+
+  // Map LawyerProfile to TeamMemberBasicInfo, ensuring availableLawyers is an array
+  const mappedUsers: TeamMemberBasicInfo[] = (availableLawyers || []).map(lawyer => ({
+    id: lawyer.id, // This is the profile ID, which is what we need for team members
+    name: lawyer.name,
+    lastName: lawyer.lastName || '',
+    status: true, // Since these are active lawyers
+    email: lawyer.teams?.[0]?.name || `${lawyer.name}.${lawyer.lastName || ''}@example.com`, // Using team name as a fallback, with optional chaining
+    imageUrl: null
+  }));
 
   const FormContent = () => (
     <TeamFormClient
-      users={users}
+      users={mappedUsers}
       onSubmit={async (data) => {
-        const result = await createTeam(data);
-        if (result.success) {
-          setIsOpen(false);
+        try {
+          const result = await createTeam({
+            name: data.name,
+            description: data.description,
+            practiceArea: data.practiceArea,
+            department: data.department,
+            teamMembers: data.teamMembers
+          });
+
+          // Handle success case
+          if (result.success) {
+            toast({
+              title: "¡Equipo Creado Exitosamente! 🎉",
+              description: result.message || `El equipo "${data.name}" ha sido creado con ${data.teamMembers.length} miembros.`,
+              variant: "default",
+            });
+            
+            // Close the dialog on success
+            onOpenChange(false);
+            
+            return { 
+              success: true, 
+              teamId: result.teamId, 
+              message: result.message || "Team created successfully" 
+            };
+          } else {
+            // Handle error case from the API
+            toast({
+              title: "Error al Crear el Equipo",
+              description: result.message || "No se pudo crear el equipo. Por favor, inténtalo de nuevo.",
+              variant: "destructive",
+            });
+            
+            return { 
+              success: false, 
+              teamId: '', 
+              message: result.message || "Failed to create team" 
+            };
+          }
+        } catch (error) {
+          // Handle exception case
+          console.error('Error creating team:', error);
+          
+          toast({
+            title: "Error al Crear el Equipo",
+            description: error instanceof Error ? error.message : "Ocurrió un error inesperado al crear el equipo",
+            variant: "destructive",
+          });
+          
+          return { 
+            success: false, 
+            teamId: '', 
+            message: error instanceof Error ? error.message : 'Failed to create team' 
+          };
         }
-        return result;
       }}
     />
   );
 
   if (isMobile) {
     return (
-      <Drawer open={isOpen} onOpenChange={setIsOpen}>
+      <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerTrigger asChild>
           <Button>
             <Plus className="h-4 w-4 mr-2" />
@@ -75,7 +134,7 @@ export function CreateTeamDialog({ users, createTeam }: CreateTeamDialogProps) {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button>
           <Plus className="h-4 w-4 mr-2" />

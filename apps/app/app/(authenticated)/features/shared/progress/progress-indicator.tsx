@@ -1,77 +1,59 @@
 // apps/app/(authenticated)/features/shared/progress/progress-indicator.tsx
+'use client';
+
 import { cn } from "@repo/design-system/lib/utils";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 
-interface TabValidation {
-  hasError: boolean;
+export interface TabValidation {
   isComplete: boolean;
-  label: string;
+  hasErrors: boolean;
 }
 
 interface ProgressIndicatorProps {
   tabs: Record<string, TabValidation>;
-  currentTab: string;
 }
 
-export function ProgressIndicator({ tabs, currentTab }: ProgressIndicatorProps) {
-  const totalSteps = Object.keys(tabs).length;
-  const completedSteps = Object.values(tabs).filter(tab => tab.isComplete).length;
-  const progress = (completedSteps / totalSteps) * 100;
+export function ProgressIndicator({ tabs }: ProgressIndicatorProps) {
+  const tabKeys = Object.keys(tabs);
+  const totalSteps = tabKeys.length;
+  const completedSteps = tabKeys.filter(tab => tabs[tab].isComplete && !tabs[tab].hasErrors).length;
+  const progress = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
 
   return (
-    <div className="mt-2 mb-6">
-      {/* Progress Bar */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-muted-foreground">
-          Progress
-        </div>
-        <div className="text-sm text-muted-foreground">
-          {completedSteps} of {totalSteps} completed
-        </div>
+    <div className="space-y-2">
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>Progress</span>
+        <span>{Math.round(progress)}%</span>
       </div>
-      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+      <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
         <div 
-          className="h-full bg-primary transition-all duration-500 ease-in-out" 
-          style={{ width: `${progress}%` }} 
+          className={cn(
+            "h-full transition-all duration-300 ease-in-out",
+            progress === 100 ? "bg-green-500" : "bg-blue-500"
+          )}
+          style={{ width: `${progress}%` }}
         />
       </div>
-
-      {/* Tab Status Map */}
-      <div className="grid grid-cols-4 gap-4 mt-4">
-        {Object.entries(tabs).map(([key, tab]) => (
-          <div
-            key={key}
-            className={cn(
-              "flex items-center space-x-2 p-2 rounded-md transition-colors",
-              currentTab === key && "bg-muted",
-              tab.hasError && "text-destructive",
-              tab.isComplete && "text-primary"
-            )}
-          >
-            {tab.hasError ? (
-              <AlertCircle className="h-4 w-4 text-destructive animate-pulse" />
-            ) : tab.isComplete ? (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            ) : (
-              <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />
-            )}
-            <span className="text-sm font-medium">
-              {tab.label}
-            </span>
-            {tab.hasError && (
-              <span className="text-xs text-destructive ml-auto">Required</span>
-            )}
-          </div>
-        ))}
+      <div className="flex justify-between mt-1">
+        {tabKeys.map((tab, index) => {
+          const status = tabs[tab];
+          return (
+            <div key={tab} className="flex flex-col items-center">
+              <div 
+                className={cn(
+                  "w-3 h-3 rounded-full",
+                  status.hasErrors ? "bg-red-500" : 
+                  status.isComplete ? "bg-green-500" : 
+                  "bg-muted-foreground/30"
+                )}
+              />
+              <span className="text-xs mt-1 text-muted-foreground">
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </span>
+            </div>
+          );
+        })}
       </div>
-
-      {/* Error Message */}
-      {Object.values(tabs).some(tab => tab.hasError) && (
-        <div className="flex items-center mt-2 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4 mr-2" />
-          Please complete all required fields
-        </div>
-      )}
     </div>
   );
 } 

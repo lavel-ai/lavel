@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 // Define the team member schema
 export const teamMemberSchema = z.object({
-  userId: z.string(),
+  userId: z.string().describe('The profile ID of the team member'),
   role: z.enum(['member', 'leader'])
 });
 

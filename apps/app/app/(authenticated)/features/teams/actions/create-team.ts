@@ -3,7 +3,8 @@
 import { getTenantDbClientUtil } from "@/app/utils/get-tenant-db-connection";
 import { getInternalUserId } from "@/app/actions/users/users-actions";
 import { createTeamSchema, type CreateTeamFormData } from '../schemas';
-import { TeamQueries } from '@repo/database/src/tenant-app/queries/teams-queries';
+import { TeamQueries } from '@repo/database/src/tenant-app/queries/teams';
+import { revalidatePath } from 'next/cache';
 
 export async function createTeam(data: CreateTeamFormData) {
   try {
@@ -25,7 +26,7 @@ export async function createTeam(data: CreateTeamFormData) {
     const tenantDb = await getTenantDbClientUtil();
     const teamQueries = new TeamQueries(tenantDb);
 
-    // Create team with members
+    // Create team with members (note: teamMembers.userId contains profile IDs, not user IDs)
     const teamCreationResult = await teamQueries.createTeam(
       {
         name: validatedData.name,
@@ -37,6 +38,9 @@ export async function createTeam(data: CreateTeamFormData) {
       },
       validatedData.teamMembers
     );
+
+    // Revalidate the page to show new data
+    revalidatePath('/my-firm');
 
     return teamCreationResult;
   } catch (error) {

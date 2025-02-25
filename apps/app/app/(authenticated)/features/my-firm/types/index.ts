@@ -1,16 +1,17 @@
+import { ReactNode } from 'react';
 import { TeamWithMembers } from '../../../features/teams/actions/team-actions';
 import { LawyerProfile } from '../../../features/lawyers/actions/lawyer-actions';
 
 export interface TeamCardProps {
   team: TeamWithMembers;
-  onEdit: (teamId: string) => void;
-  onDelete: (teamId: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 export interface LawyerCardProps {
   lawyer: LawyerProfile;
-  onEdit: (lawyerId: string) => void;
-  onDelete: (lawyerId: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 export interface SearchBarProps {
@@ -18,6 +19,8 @@ export interface SearchBarProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  filters?: Record<string, string>;
+  onFilterChange?: (filters: Record<string, string>) => void;
 }
 
 export interface FilterProps {
@@ -52,4 +55,9 @@ export interface CreateTeamDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   availableLawyers: LawyerProfile[];
+}
+
+export interface SkeletonCardProps {
+  type: 'lawyer' | 'team';
+  count?: number;
 } 

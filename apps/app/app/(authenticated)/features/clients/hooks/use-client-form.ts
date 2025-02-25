@@ -1,66 +1,87 @@
 'use client';
 
-import { useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useState, useCallback } from 'react';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { clientFormSchema, type ClientFormData } from '../validation/schemas';
+import { clientFormSchema, defaultFormValues, ClientFormData } from '../validation/schemas';
+
+export type TabValidation = {
+  isComplete: boolean;
+  hasErrors: boolean;
+};
+
+export type TabStatus = Record<string, TabValidation>;
 
 export function useClientForm() {
+  // Define the tabs for the form
+  const tabs = ['general', 'lawFirm', 'contact', 'billing'];
   const [currentTab, setCurrentTab] = useState('general');
 
+  // Initialize the form with default values and zod validation
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientFormSchema),
-    defaultValues: {
-      clientType: 'fisica',
-      legalName: '',
-      addresses: [],
-      primaryLawyerId: '',
-      contactInfo: [],
-      billing: { billingCurrency: 'MXN', billingTerms: 'Net 30' },
-    },
+    defaultValues: defaultFormValues as any,
     mode: 'onChange',
   });
 
-  const { fields: addressFields, append: appendAddress, remove: removeAddress } = useFieldArray({
-    control: form.control,
-    name: 'addresses',
-  });
+  const { formState } = form;
 
-  const { fields: contactFields, append: appendContact, remove: removeContact } = useFieldArray({
-    control: form.control,
-    name: 'contactInfo',
-  });
+  // Function to check if a tab is complete and if it has errors
+  const getTabStatus = useCallback(
+    (tab: string): TabValidation => {
+      const { errors, touchedFields, dirtyFields } = formState;
+      
+      // Define which fields belong to each tab
+      const tabFields: Record<string, string[]> = {
+        general: ['clientType', 'legalName', 'taxId', 'category', 'status', 'isConfidential', 'preferredLanguage', 'notes'],
+        lawFirm: ['corporations'],
+        contact: ['addresses', 'contactInfo', 'portalAccess', 'portalAccessEmail'],
+        billing: ['billing'],
+      };
 
-  const tabs = ['general', 'lawFirm', 'contact', 'billing'];
+      // Check if the tab has any errors
+      const hasTabErrors = Object.keys(errors).some((fieldName) => {
+        // For nested fields like billing.name, check if the parent field is in the tab
+        const parentField = fieldName.split('.')[0];
+        return tabFields[tab].includes(parentField);
+      });
 
-  const getTabStatus = (tab: string) => {
-    const errors = form.formState.errors;
-    const values = form.getValues();
-    switch (tab) {
-      case 'general':
-        return {
-          isComplete: !!values.clientType && !!values.legalName && values.addresses.length > 0,
-          hasErrors: !!errors.clientType || !!errors.legalName || !!errors.addresses,
-        };
-      case 'lawFirm':
-        return {
-          isComplete: !!values.category && !!values.status,
-          hasErrors: !!errors.category || !!errors.primaryLawyerId || !!errors.status,
-        };
-      case 'contact':
-        return {
-          isComplete: values.contactInfo.length > 0,
-          hasErrors: !!errors.contactInfo,
-        };
-      case 'billing':
-        return {
-          isComplete: !!values.billing?.name,
-          hasErrors: !!errors.billing,
-        };
-      default:
-        return { isComplete: false, hasErrors: false };
-    }
-  };
+      // Check if the tab is complete (all required fields are filled)
+      const isTabComplete = tabFields[tab].every((field) => {
+        // For arrays like addresses, check if there's at least one item
+        if (field === 'addresses') {
+          const addresses = form.getValues('addresses');
+          return addresses && addresses.length > 0;
+        }
+        if (field === 'contactInfo') {
+          const contactInfo = form.getValues('contactInfo');
+          return contactInfo && contactInfo.length > 0;
+        }
+        if (field === 'corporations') {
+          const clientType = form.getValues('clientType');
+          const corporations = form.getValues('corporations');
+          
+          if (clientType === 'moral') {
+            return corporations && corporations.length > 0;
+          }
+          return true; // Not required for fisica
+        }
+        
+        // For regular fields, check if they have a value
+        const value = form.getValues(field as any);
+        return value !== undefined && value !== '';
+      });
+
+      return {
+        isComplete: isTabComplete,
+        hasErrors: hasTabErrors,
+      };
+    },
+    [formState, form]
+  );
+
+  // Handle form submission
+  const handleSubmit = form.handleSubmit;
 
   return {
     form,
@@ -68,11 +89,6 @@ export function useClientForm() {
     setCurrentTab,
     tabs,
     getTabStatus,
-    addressFields,
-    appendAddress,
-    removeAddress,
-    contactFields,
-    appendContact,
-    removeContact,
+    handleSubmit,
   };
 }

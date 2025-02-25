@@ -19,7 +19,7 @@ import { TeamMemberBasicInfo } from "@/app/(authenticated)/features/shared/actio
 import { useToast } from "@repo/design-system/hooks/use-toast";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { LawyerCard } from "./lawyer-card";
+import { TeamMemberSelectionCard } from "./team-member-selection-card";
 
 // Form validation schema
 const teamFormSchema = z.object({
@@ -44,7 +44,7 @@ interface TeamFormClientProps {
   onSubmit: (data: FormData) => Promise<{ success: boolean; teamId: string }>;
 }
 
-export function TeamFormClient({ users, onSubmit }: TeamFormClientProps) {
+export function TeamFormClient({ users = [], onSubmit }: TeamFormClientProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<Map<string, 'leader' | 'member'>>(new Map());
@@ -90,8 +90,8 @@ export function TeamFormClient({ users, onSubmit }: TeamFormClientProps) {
     setSelectedMembers(newSelectedMembers);
     
     // Update form value
-    const teamMembers = Array.from(newSelectedMembers).map(([userId, role]) => ({
-      userId,
+    const teamMembers = Array.from(newSelectedMembers).map(([profileId, role]) => ({
+      userId: profileId, // This is actually the profile ID
       role,
     }));
     form.setValue('teamMembers', teamMembers, { shouldValidate: true });
@@ -101,22 +101,14 @@ export function TeamFormClient({ users, onSubmit }: TeamFormClientProps) {
     try {
       setIsSubmitting(true);
       const result = await onSubmit(data);
+      
+      // Only reset the form on success, but don't show toast (handled by parent)
       if (result.success) {
-        toast({
-          title: "¡Equipo Creado Exitosamente! 🎉",
-          description: `El equipo "${data.name}" ha sido creado con ${data.teamMembers.length} miembros.`,
-          variant: "default",
-        });
         form.reset();
         setSelectedMembers(new Map());
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Error al crear el equipo";
-      toast({
-        title: "Error al Crear el Equipo",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      // Log error but don't show toast (handled by parent)
       console.error("Team creation error:", error);
     } finally {
       setIsSubmitting(false);
@@ -194,15 +186,21 @@ export function TeamFormClient({ users, onSubmit }: TeamFormClientProps) {
               <FormLabel>Miembros del Equipo</FormLabel>
               <FormControl>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {users.map((user) => (
-                    <LawyerCard
-                      key={user.id}
-                      lawyer={user}
-                      isSelected={selectedMembers.has(user.id)}
-                      onSelect={handleMemberSelect}
-                      disabled={isSubmitting}
-                    />
-                  ))}
+                  {users && users.length > 0 ? (
+                    users.map((user) => (
+                      <TeamMemberSelectionCard
+                        key={user.id}
+                        lawyer={user}
+                        isSelected={selectedMembers.has(user.id)}
+                        onSelect={handleMemberSelect}
+                        disabled={isSubmitting}
+                      />
+                    ))
+                  ) : (
+                    <div className="col-span-2 text-center py-4 text-muted-foreground">
+                      No hay abogados disponibles para agregar al equipo.
+                    </div>
+                  )}
                 </div>
               </FormControl>
               <FormMessage />

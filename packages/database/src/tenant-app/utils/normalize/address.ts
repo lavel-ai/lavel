@@ -41,7 +41,7 @@ export const addressTransformers = {
   state: z.string().transform(normalizeAddress.state),
   zipCode: z.string().transform(normalizeAddress.zipCode),
   country: z.string().transform(normalizeAddress.country),
-  addressType: z.enum(['sucursal', 'fiscal', 'principal', 'otra']).optional().transform(normalizeAddress.addressType),
+  addressType: z.enum(['oficina', 'casa', 'facturación', 'envío', 'sucursal', 'principal', 'bodega', 'otro']).optional().transform(normalizeAddress.addressType),
 };
 
 /**

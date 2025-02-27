@@ -9,9 +9,8 @@ import {
 import { useIsMobile } from '@repo/design-system/hooks/use-mobile';
 import { useToast } from '@repo/design-system/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
-import { Plus, Search, Users, Briefcase, Building } from 'lucide-react';
-import { Button } from '@repo/design-system/components/ui/button';
+import { useCallback, useState, useMemo } from 'react';
+import { Users, Briefcase, Building, Search } from 'lucide-react';
 import {
   type LawyerFilters,
   type LawyerProfile,
@@ -31,16 +30,19 @@ import {
 } from '../features/teams/actions/team-actions';
 import { CreateTeamDialog } from '../features/teams/components/create-team-dialog';
 import { TeamCard } from '../features/teams/components/team-card';
-import { Input } from '@repo/design-system/components/ui/input';
+import { ClientsContainer, Client } from '../features/clients/components/clients-container';
+import { getClients } from '../features/clients/actions/get-client-actions';
 
 type MyFirmContentProps = {
   initialTeams: TeamWithMembers[];
   initialLawyers: LawyerProfile[];
+  initialClients: Client[]; // Now using the proper Client type
 };
 
 export function MyFirmContent({
   initialTeams,
   initialLawyers,
+  initialClients,
 }: MyFirmContentProps) {
   const [activeTab, setActiveTab] = useState('lawyers');
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
@@ -58,20 +60,46 @@ export function MyFirmContent({
     setIsLoading,
   } = useMyFirmStore();
 
-  // Handle search change
+  // Handle search change - memoized with useCallback
   const handleSearchChange = useCallback(
     (value: string) => {
-      setFilters({ ...filters, search: value });
+      if (filters.search !== value) {
+        setFilters({ ...filters, search: value });
+      }
     },
     [setFilters, filters]
   );
 
-  // Handle filter change
+  // Handle filter change - memoized with useCallback
   const handleFilterChange = useCallback(
     (newFilters: Record<string, string>) => {
-      setFilters({ ...filters, ...newFilters });
+      const hasChanges = Object.entries(newFilters).some(
+        ([key, value]) => filters[key as keyof typeof filters] !== value
+      );
+      
+      if (hasChanges) {
+        setFilters({ ...filters, ...newFilters });
+      }
     },
     [setFilters, filters]
+  );
+
+  // Handle pagination change - memoized with useCallback
+  const handlePaginationChange = useCallback(
+    (page: number, limit: number) => {
+      const shouldUpdate = 
+        pagination.page !== page || 
+        pagination.limit !== limit;
+        
+      if (shouldUpdate) {
+        setPagination({ 
+          ...pagination, 
+          page, 
+          limit
+        });
+      }
+    },
+    [pagination, setPagination]
   );
 
   // Set up React Query for teams
@@ -136,25 +164,59 @@ export function MyFirmContent({
     initialData: initialLawyers,
   });
 
-  const handleTeamEdit = async (teamId: string) => {
+  // Set up React Query for clients
+  const {
+    data: clients,
+    isLoading: isLoadingClients,
+    error: clientsError,
+  } = useQuery({
+    queryKey: ['clients', filters, pagination, sort],
+    queryFn: async () => {
+      setIsLoading(true);
+      try {
+        const result = await getClients({
+          search: filters.search,
+          // Add any additional filters here
+        });
+        
+        if (result.status === 'error') {
+          toast({
+            title: 'Error',
+            description: result.message,
+            variant: 'destructive',
+          });
+          return initialClients;
+        }
+        return result.data || initialClients;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    initialData: initialClients,
+  });
+
+  // Memoize the total clients count to avoid unnecessary re-renders
+  const totalClients = useMemo(() => clients.length, [clients]);
+
+  const handleTeamEdit = useCallback(async (teamId: string) => {
     // Implement team edit logic
     console.log('Edit team:', teamId);
-  };
+  }, []);
 
-  const handleTeamDelete = async (teamId: string) => {
+  const handleTeamDelete = useCallback(async (teamId: string) => {
     // Implement team delete logic
     console.log('Delete team:', teamId);
-  };
+  }, []);
 
-  const handleLawyerEdit = async (lawyerId: string) => {
+  const handleLawyerEdit = useCallback(async (lawyerId: string) => {
     // Implement lawyer edit logic
     console.log('Edit lawyer:', lawyerId);
-  };
+  }, []);
 
-  const handleLawyerDelete = async (lawyerId: string) => {
+  const handleLawyerDelete = useCallback(async (lawyerId: string) => {
     // Implement lawyer delete logic
     console.log('Delete lawyer:', lawyerId);
-  };
+  }, []);
 
   return (
     <div className="w-full max-w-full">
@@ -284,15 +346,16 @@ export function MyFirmContent({
         </TabsContent>
 
         <TabsContent value="clients" className="mt-5">
-          <div className="py-10 text-center">
-            <h2 className="mb-3 font-bold text-xl">
-              Client Management Coming Soon
-            </h2>
-            <p className="text-gray-600 text-sm max-w-2xl mx-auto">
-              We're working on bringing you powerful client management features.
-              Stay tuned!
-            </p>
-          </div>
+          <ErrorBoundary fallback={<DefaultErrorFallback />}>
+            <ClientsContainer 
+              clients={clients} 
+              totalClients={totalClients} 
+              onSearch={handleSearchChange}
+              onPaginate={handlePaginationChange}
+              currentPage={pagination.page}
+              perPage={pagination.limit}
+            />
+          </ErrorBoundary>
         </TabsContent>
       </Tabs>
 

@@ -1,14 +1,14 @@
 'use client';
 
 import { UseFormReturn } from 'react-hook-form';
-import { ClientFormData, Currency, PaymentTerms } from '../../../validation/schemas';
+import { CompletedClientFormData } from '../../../validation/schema-factory';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@repo/design-system/components/ui/form';
 import { Input } from '@repo/design-system/components/ui/input';
 import { Card, CardContent } from '@repo/design-system/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@repo/design-system/components/ui/select';
 
 interface BillingInfoTabProps {
-  form: UseFormReturn<ClientFormData>;
+  form: UseFormReturn<CompletedClientFormData>;
 }
 
 export function BillingInfoTab({ form }: BillingInfoTabProps) {
@@ -43,6 +43,23 @@ export function BillingInfoTab({ form }: BillingInfoTabProps) {
               name="billing.rfc"
               render={({ field }) => (
                 <FormItem>
+                  <FormLabel>RFC</FormLabel>
+                  <FormDescription>
+                    Tax ID for billing purposes (defaults to client RFC if left empty)
+                  </FormDescription>
+                  <FormControl>
+                    <Input placeholder="Enter RFC" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="billing.rfc"
+              render={({ field }) => (
+                <FormItem>
                   <FormLabel>Billing RFC</FormLabel>
                   <FormDescription>
                     Tax ID for billing purposes (defaults to client RFC if left empty)
@@ -66,7 +83,7 @@ export function BillingInfoTab({ form }: BillingInfoTabProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Billing Currency</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select currency" />
@@ -90,7 +107,7 @@ export function BillingInfoTab({ form }: BillingInfoTabProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Payment Terms</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select payment terms" />

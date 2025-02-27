@@ -1,206 +1,113 @@
 'use client';
 
-import { UseFormReturn, useFieldArray } from 'react-hook-form';
-import { ClientFormData } from '../../../validation/schemas';
-import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@repo/design-system/components/ui/form';
-import { Input } from '@repo/design-system/components/ui/input';
-import { Button } from '@repo/design-system/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@repo/design-system/components/ui/card';
-import { Plus, Trash2 } from 'lucide-react';
-import { Textarea } from '@repo/design-system/components/ui/textarea';
+import { Card, CardContent } from '@repo/design-system/components/ui/card';
+import {
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@repo/design-system/components/ui/form';
+import { useEffect, useState } from 'react';
+import type { UseFormReturn } from 'react-hook-form';
+import type { CompletedClientFormData } from '../../../validation/schema-factory';
+import { getLawyers } from '../../../../lawyers/actions/lawyer-actions';
+import { LawyerCombobox, type LawyerOption } from '../lawyer-combobox';
 
 interface LawFirmDataTabProps {
-  form: UseFormReturn<ClientFormData>;
+  form: UseFormReturn<CompletedClientFormData>;
 }
 
 export function LawFirmDataTab({ form }: LawFirmDataTabProps) {
-  const clientType = form.watch('clientType');
-  
-  // Only show corporation fields for moral clients
-  if (clientType !== 'moral') {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8 text-muted-foreground">
-              <p>This section is only applicable for "Persona Moral" clients.</p>
-              <p className="text-sm mt-2">Please select "Persona Moral" in the General tab if this is a company.</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const [selectedLawyer, setSelectedLawyer] = useState<LawyerOption | null>(
+    null
+  );
+  const leadLawyerId = form.watch('leadLawyerId');
 
-  // Set up field array for corporations
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: 'corporations',
-  });
+  // Fetch lawyer details when the ID changes
+  useEffect(() => {
+    if (leadLawyerId) {
+      const fetchLawyerDetails = async () => {
+        try {
+          const response = await getLawyers();
+          if (response.status === 'success' && response.data) {
+            const lawyer = response.data.find((l) => l.id === leadLawyerId);
+            if (lawyer) {
+              setSelectedLawyer({
+                id: lawyer.id,
+                name: lawyer.name,
+                lastName: lawyer.lastName,
+                maternalLastName: lawyer.maternalLastName,
+                practiceArea: lawyer.practiceArea,
+                isLeadLawyer: lawyer.isLeadLawyer,
+              });
+            }
+          }
+        } catch (_error) {
+          // Error handling without console.error
+        }
+      };
+
+      fetchLawyerDetails();
+    } else {
+      setSelectedLawyer(null);
+    }
+  }, [leadLawyerId]);
 
   return (
     <div className="space-y-6">
-      {fields.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8">
-              <p className="text-muted-foreground mb-4">No corporation information added yet.</p>
-              <Button 
-                type="button" 
-                onClick={() => append({ 
-                  name: form.getValues('legalName') || '', 
-                  constitutionDate: '', 
-                  notaryNumber: null,
-                  notaryState: '',
-                  instrumentNumber: '',
-                  notes: '',
-                  createdBy: '',
-                  updatedBy: '',
-                  clientId: '',
-                })}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Corporation Information
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        fields.map((field, index) => (
-          <Card key={field.id} className="relative">
-            <CardHeader>
-              <CardTitle className="text-lg">Corporation Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FormField
-                control={form.control}
-                name={`corporations.${index}.name`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Corporation Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`corporations.${index}.constitutionDate`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Constitution Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name={`corporations.${index}.notaryNumber`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Notary Number</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          {...field} 
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name={`corporations.${index}.notaryState`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Notary State</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name={`corporations.${index}.instrumentNumber`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Instrument Number</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`corporations.${index}.notes`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes</FormLabel>
-                    <FormControl>
-                      <Textarea 
-                        placeholder="Additional notes about the corporation"
-                        className="resize-none"
-                        {...field} 
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <h3 className="font-medium text-lg">Asignación de Abogado Principal</h3>
+            
+            <FormDescription>
+              Asigna un abogado principal que será responsable de este cliente.
+            </FormDescription>
+            
+            <FormField
+              control={form.control}
+              name="leadLawyerId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Abogado Principal</FormLabel>
+                  <FormControl>
+                    <div className="relative w-full" style={{ position: 'relative', zIndex: 50 }}>
+                      <LawyerCombobox
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="Selecciona un abogado principal"
                       />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-            <CardFooter className="flex justify-end">
-              <Button 
-                type="button" 
-                variant="destructive" 
-                size="sm"
-                onClick={() => remove(index)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Remove Corporation
-              </Button>
-            </CardFooter>
-          </Card>
-        ))
-      )}
-
-      {fields.length > 0 && (
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={() => append({ 
-            name: '', 
-            constitutionDate: '', 
-            notaryNumber: null,
-            notaryState: '',
-            instrumentNumber: '',
-            notes: '',
-            createdBy: '',
-            updatedBy: '',
-            clientId: '',
-          })}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add Another Corporation
-        </Button>
-      )}
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            {selectedLawyer && (
+              <div className="rounded-md border bg-muted p-4">
+                <div>
+                  <h4 className="font-medium">
+                    {selectedLawyer.name} {selectedLawyer.lastName} {selectedLawyer.maternalLastName || ''}
+                  </h4>
+                  {selectedLawyer.practiceArea && (
+                    <p className="text-muted-foreground text-sm">
+                      Especialidad: {selectedLawyer.practiceArea}
+                    </p>
+                  )}
+                  {selectedLawyer.isLeadLawyer && (
+                    <p className="mt-1 text-primary text-sm">
+                      Abogado Principal de la Firma
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

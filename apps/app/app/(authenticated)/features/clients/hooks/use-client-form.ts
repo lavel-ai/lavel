@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { clientFormSchema, defaultFormValues, ClientFormData } from '../validation/schemas';
+import { 
+  clientFormSchema, 
+  defaultFormValues, 
+  CompletedClientFormData 
+} from '../validation/schema-factory';
 
 export type TabValidation = {
   isComplete: boolean;
@@ -12,31 +16,48 @@ export type TabValidation = {
 
 export type TabStatus = Record<string, TabValidation>;
 
-export function useClientForm(initialValues?: Partial<ClientFormData>) {
+export function useClientForm(initialValues?: Partial<CompletedClientFormData>) {
   // Define the tabs for the form
   const tabs = ['general', 'lawFirm', 'contact', 'billing'];
   const [currentTab, setCurrentTab] = useState('general');
 
   // Initialize the form with default values and zod validation
-  const form = useForm<ClientFormData>({
+  const form = useForm<CompletedClientFormData>({
     resolver: zodResolver(clientFormSchema),
-    defaultValues: initialValues ? { ...defaultFormValues, ...initialValues } as any : defaultFormValues as any,
-    mode: 'onChange',
+    defaultValues: initialValues ? { ...defaultFormValues, ...initialValues } as CompletedClientFormData : defaultFormValues,
+    mode: 'onBlur', // Changed from onSubmit to onBlur for more immediate feedback
+    reValidateMode: 'onChange',
+    criteriaMode: 'all', // Show all errors instead of just the first one
+    shouldFocusError: true,
+    shouldUnregister: false, // Keep fields registered even when they're removed from the DOM
   });
 
   const { formState } = form;
 
+  // Log form state changes for debugging
+  useEffect(() => {
+    const subscription = form.watch((value, { name, type }) => {
+      console.log(`Form field changed: ${name} (${type})`, value);
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  // Log validation errors whenever they change
+  useEffect(() => {
+    console.log('Form validation errors:', form.formState.errors);
+  }, [form.formState.errors]);
+
   // Function to check if a tab is complete and if it has errors
   const getTabStatus = useCallback(
     (tab: string): TabValidation => {
-      const { errors, touchedFields, dirtyFields } = formState;
+      const { errors } = formState;
       
       // Define which fields belong to each tab
-      const tabFields: Record<string, string[]> = {
-        general: ['clientType', 'legalName', 'taxId', 'category', 'status', 'isConfidential', 'preferredLanguage', 'notes'],
-        lawFirm: ['corporations'],
-        contact: ['addresses', 'contactInfo', 'portalAccess', 'portalAccessEmail'],
-        billing: ['billing'],
+      const tabFields: Record<string, Array<keyof CompletedClientFormData | string>> = {
+        general: ['clientType', 'legalName', 'category', 'status', 'isConfidential', 'preferredLanguage', 'notes'],
+        lawFirm: ['leadLawyerId'], 
+        contact: ['contactInfo'],
+        billing: ['billing', 'taxId'],
       };
 
       // Check if the tab has any errors
@@ -47,30 +68,38 @@ export function useClientForm(initialValues?: Partial<ClientFormData>) {
       });
 
       // Check if the tab is complete (all required fields are filled)
-      const isTabComplete = tabFields[tab].every((field) => {
-        // For arrays like addresses, check if there's at least one item
-        if (field === 'addresses') {
-          const addresses = form.getValues('addresses');
-          return addresses && addresses.length > 0;
+      let isTabComplete = false;
+      
+      // Only consider a tab complete if it has been visited/edited
+      let hasBeenVisited = false;
+      try {
+        // Try to access the first field of the tab to check if it's been visited
+        const firstField = tabFields[tab][0];
+        if (firstField in form.getValues()) {
+          hasBeenVisited = true;
         }
-        if (field === 'contactInfo') {
-          const contactInfo = form.getValues('contactInfo');
-          return contactInfo && contactInfo.length > 0;
-        }
-        if (field === 'corporations') {
-          const clientType = form.getValues('clientType');
-          const corporations = form.getValues('corporations');
-          
-          if (clientType === 'moral') {
-            return corporations && corporations.length > 0;
+      } catch (e) {
+        console.log(`Error checking if tab ${tab} has been visited:`, e);
+        // If we can't access the field, assume it hasn't been visited
+        hasBeenVisited = false;
+      }
+      
+      if (hasBeenVisited) {
+        // For the general tab, only require legalName
+        if (tab === 'general') {
+          try {
+            const legalName = form.getValues('legalName');
+            isTabComplete = !!legalName;
+          } catch (e) {
+            console.log('Error checking if general tab is complete:', e);
+            isTabComplete = false;
           }
-          return true; // Not required for fisica
+        } 
+        // For other tabs, no fields are strictly required
+        else {
+          isTabComplete = true;
         }
-        
-        // For regular fields, check if they have a value
-        const value = form.getValues(field as any);
-        return value !== undefined && value !== '';
-      });
+      }
 
       return {
         isComplete: isTabComplete,

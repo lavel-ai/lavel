@@ -2,13 +2,10 @@
 
 import { auth } from '@repo/auth/server';
 import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
-import { getInternalUserId } from '@/app/actions/users/user-actions';
 import { clients } from '@repo/database/src/tenant-app/schema';
 import { and, desc, eq, ilike, isNull, or, asc } from 'drizzle-orm';
 import { SQL } from 'drizzle-orm';
 import { notDeleted } from '@repo/database/src/tenant-app/schema/clients-schema';
-import { revalidatePath } from 'next/cache';
-import { z } from 'zod';
 
 export type ClientFilters = {
   search?: string;
@@ -135,7 +132,7 @@ export async function getClients(
         category: client.category,
         status: client.status,
         isConfidential: client.isConfidential,
-        primaryLawyerId: client.primaryLawyerId,
+        primaryLawyerId: client.leadLawyerId,
         createdAt: client.createdAt,
         updatedAt: client.updatedAt,
         primaryAddress: primaryAddressJoin?.address 

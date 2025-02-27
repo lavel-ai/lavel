@@ -29,13 +29,13 @@ export const clients = pgTable(
     // Core client information
     clientType: varchar('client_type', { length: 20 }).$type<'fisica' | 'moral'>().notNull(),
     legalName: varchar('legal_name', { length: 255 }).notNull(),
-    taxId: varchar('tax_id', { length: 13 }).default(''), // RFC length in Mexico
+    industry: varchar('industry', { length: 255 }).default('Not specified'),
 
     // Law firm-specific fields
     category: varchar('category', { length: 20 }).$type<'litigio' | 'consultoria' | 'corporativo' | 'otros'>().default('otros').notNull(),
     isConfidential: boolean('is_confidential').default(false).notNull(),
-    primaryLawyerId: uuid('primary_lawyer_id').references(() => profiles.id),
-    status: varchar('status', { length: 20 }).$type<'prospect' | 'active' | 'inactive' | 'archived'>().default('prospect').notNull(),
+    leadLawyerId: uuid('lead_lawyer_id').references(() => profiles.id),
+    status: varchar('status', { length: 20 }).$type<'prospecto' | 'activo' | 'inactivo' | 'archivado' | 'borrador'>().default('prospecto').notNull(),
 
     // Communication and access
     preferredLanguage: varchar('preferred_language', { length: 5 }).default('es-MX').notNull(),
@@ -43,6 +43,9 @@ export const clients = pgTable(
     portalAccessEmail: varchar('portal_access_email', { length: 255 }),
 
     // Billing
+    billingName: varchar('billing_name', { length: 255 }),
+    billingEmail: varchar('billing_email', { length: 255 }),
+    taxId: varchar('tax_id', { length: 13 }).default(''), // RFC length in Mexico
     billingTerms: varchar('billing_terms', { length: 50 }), // e.g., 'Net 30', 'Hourly'
     billingCurrency: varchar('billing_currency', { length: 3 }).default('MXN').notNull(),
 
@@ -79,10 +82,10 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
   contacts: many(clientContacts),
 
   // Team relation
-  primaryLawyer: one(profiles, {
-    fields: [clients.primaryLawyerId],
+  leadLawyer: one(profiles, {
+    fields: [clients.leadLawyerId],
     references: [profiles.id],
-    relationName: 'client_primary_lawyer',
+    relationName: 'client_lead_lawyer',
   }),
 
   // Audit trail relations

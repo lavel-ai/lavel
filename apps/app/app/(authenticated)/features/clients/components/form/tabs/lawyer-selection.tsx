@@ -1,33 +1,25 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { Controller } from 'react-hook-form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@repo/design-system/components/ui/select';
-import { getTeamMembers } from '../../actions/client-form-actions';
+import { LawyerCombobox } from '../lawyer-combobox';
+import { FormControl } from '@repo/design-system/components/ui/form';
+import { Control } from 'react-hook-form';
 
-export function LawyerSelection({ control }) {
-  const { data: lawyers } = useQuery({
-    queryKey: ['teamMembers'],
-    queryFn: getTeamMembers,
-  });
-
+export function LawyerSelection({ control }: { control: Control }) {
   return (
     <Controller
-      name="primaryLawyerId"
+      name="leadLawyerId"
       control={control}
       render={({ field }) => (
-        <Select onValueChange={field.onChange} value={field.value}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select a lawyer" />
-          </SelectTrigger>
-          <SelectContent>
-            {lawyers?.map((lawyer) => (
-              <SelectItem key={lawyer.id} value={lawyer.id}>
-                {lawyer.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <FormControl>
+          <div className="relative w-full" style={{ position: 'relative', zIndex: 50 }}>
+            <LawyerCombobox
+              value={field.value}
+              onChange={field.onChange}
+              placeholder="Selecciona un abogado"
+            />
+          </div>
+        </FormControl>
       )}
     />
   );

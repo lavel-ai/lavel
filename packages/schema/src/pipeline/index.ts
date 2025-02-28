@@ -61,13 +61,17 @@ export class TransformationPipeline<T> {
       result = await stage.transform(result, context);
       
       // Track changes
-      Object.keys(result).forEach(key => {
-        if (JSON.stringify(beforeStage[key]) !== JSON.stringify(result[key])) {
+      // Use type assertion to handle the generic T
+      const resultObj = result as Record<string, unknown>;
+      const beforeObj = beforeStage as Record<string, unknown>;
+      
+      Object.keys(resultObj).forEach(key => {
+        if (JSON.stringify(beforeObj[key]) !== JSON.stringify(resultObj[key])) {
           changes.push({
             stage: stage.name,
             field: key,
-            originalValue: beforeStage[key],
-            newValue: result[key],
+            originalValue: beforeObj[key],
+            newValue: resultObj[key],
           });
         }
       });

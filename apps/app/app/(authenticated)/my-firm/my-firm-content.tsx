@@ -24,23 +24,23 @@ import {
 import { SearchBar } from '../features/my-firm/components/search-bar';
 import { SkeletonCard } from '../features/my-firm/components/skeleton-card';
 import { useMyFirmStore } from '../features/my-firm/store/my-firm-store';
-import {
-  type TeamWithMembers,
-  getTeams,
-} from '../features/teams/actions/team-actions';
+// import {
+//   type TeamWithMembers,
+//   getTeams,
+// } from '../features/teams/actions/team-actions';
 import { CreateTeamDialog } from '../features/teams/components/create-team-dialog';
 import { TeamCard } from '../features/teams/components/team-card';
 import { ClientsContainer, Client } from '../features/clients/components/clients-container';
 import { getClients } from '../features/clients/actions/get-client-actions';
 
 type MyFirmContentProps = {
-  initialTeams: TeamWithMembers[];
+  // initialTeams: TeamWithMembers[];
   initialLawyers: LawyerProfile[];
   initialClients: Client[]; // Now using the proper Client type
 };
 
 export function MyFirmContent({
-  initialTeams,
+  // initialTeams,
   initialLawyers,
   initialClients,
 }: MyFirmContentProps) {
@@ -102,32 +102,32 @@ export function MyFirmContent({
     [pagination, setPagination]
   );
 
-  // Set up React Query for teams
-  const {
-    data: teams,
-    isLoading: isLoadingTeams,
-    error: teamsError,
-  } = useQuery({
-    queryKey: ['teams', filters, pagination, sort],
-    queryFn: async () => {
-      setIsLoading(true);
-      try {
-        const result = await getTeams();
-        if (result.status === 'error') {
-          toast({
-            title: 'Error',
-            description: result.message,
-            variant: 'destructive',
-          });
-          return initialTeams;
-        }
-        return result.data || initialTeams;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    initialData: initialTeams,
-  });
+  // // Set up React Query for teams
+  // const {
+  //   data: teams,
+  //   isLoading: isLoadingTeams,
+  //   error: teamsError,
+  // } = useQuery({
+  //   queryKey: ['teams', filters, pagination, sort],
+  //   queryFn: async () => {
+  //     setIsLoading(true);
+  //     try {
+  //       const result = await getTeams();
+  //       if (result.status === 'error') {
+  //         toast({
+  //           title: 'Error',
+  //           description: result.message,
+  //           variant: 'destructive',
+  //         });
+  //         return initialTeams;
+  //       }
+  //       return result.data || initialTeams;
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   },
+  //   initialData: initialTeams,
+  // });
 
   // Set up React Query for lawyers
   const {

@@ -15,6 +15,20 @@
       "when": 1740584312898,
       "tag": "0001_brief_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1740750263301,
+      "tag": "0002_powerful_fixer",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1740756085865,
+      "tag": "0003_lumpy_speed_demon",
+      "breakpoints": true
     }
   ]
 }

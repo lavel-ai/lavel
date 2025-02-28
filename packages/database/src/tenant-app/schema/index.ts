@@ -35,3 +35,5 @@ export * from "./contacts-schema";
 export * from "./client-contacts-schema";
 export * from "./profiles-schema";
 export * from "./team-profiles-schema";
+export * from './departments-schema';
+

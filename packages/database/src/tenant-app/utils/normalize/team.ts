@@ -1,17 +1,18 @@
-import { teamProfiles, teams, profiles } from "../../schema";
+import { teamProfiles, teams, profiles, departments } from "../../schema";
 import { TeamWithMembers } from "../../queries/teams";
 
 export function normalizeTeam(team: typeof teams.$inferSelect & {
   teamProfiles: (typeof teamProfiles.$inferSelect & {
     profile: typeof profiles.$inferSelect
   })[];
+  department?: typeof departments.$inferSelect | null;
 }): TeamWithMembers {
   return {
     id: team.id,
     name: team.name,
     description: team.description,
     practiceArea: team.practiceArea,
-    department: team.department,
+    departmentId: team.departmentId,
     members: team.teamProfiles.map(tp => ({
       id: tp.profile.id,
       name: tp.profile.name,

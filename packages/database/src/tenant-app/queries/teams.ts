@@ -8,7 +8,7 @@ export type TeamWithMembers = {
   name: string;
   description: string | null;
   practiceArea: string | null;
-  department: string | null;
+  departmentId: string | null;
   members: {
     id: string;
     name: string;
@@ -24,7 +24,7 @@ export type CreateTeamInput = {
   name: string;
   description?: string | null;
   practiceArea: string;
-  department: string;
+  departmentId: string;
   createdBy: string;
   updatedBy: string;
 };
@@ -86,7 +86,7 @@ export class TeamQueries {
           name: input.name,
           description: input.description,
           practiceArea: input.practiceArea,
-          department: input.department,
+          departmentId: input.departmentId,
           createdBy: input.createdBy,
           updatedBy: input.updatedBy,
         })
@@ -129,7 +129,8 @@ export async function queryTeams(db: TenantDatabase) {
         with: {
           profile: true
         }
-      }
+      },
+      department: true
     }
   });
 
@@ -140,7 +141,7 @@ export async function insertTeam(db: TenantDatabase, data: {
   name: string;
   description?: string | null;
   practiceArea?: string | null;
-  department?: string | null;
+  departmentId?: string | null;
   createdBy: string;
 }) {
   const [team] = await db.insert(teams).values(data).returning();

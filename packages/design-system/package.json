@@ -38,6 +38,7 @@
     "@radix-ui/react-tooltip": "^1.1.6",
     "@repo/analytics": "workspace:*",
     "@repo/auth": "workspace:*",
+    "@repo/schema": "workspace:*",
     "@repo/observability": "workspace:*",
     "@tanstack/react-query": "^5.66.0",
     "class-variance-authority": "^0.7.1",

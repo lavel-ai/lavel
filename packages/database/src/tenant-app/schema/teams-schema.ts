@@ -7,13 +7,14 @@ import { users } from "./users-schema";
 import { cases } from "./case-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { teamProfiles } from "./team-profiles-schema";
+import { departments } from "./departments-schema";
 
 export const teams = pgTable("teams", {
     id: uuid("id").defaultRandom().primaryKey().notNull(),
     name: varchar("name", { length: 255 }).notNull().unique('teams_name_unique'),
     description: text("description"),
     practiceArea: varchar("practice_area", { length: 255 }),
-    department: varchar("department", { length: 255 }),
+    departmentId: uuid("department_id").references(() => departments.id, { onDelete: 'set null' }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' })
         .default(sql`CURRENT_TIMESTAMP`)
         .notNull(),
@@ -42,6 +43,11 @@ export const teamsRelations = relations(teams, ({ one, many }) => ({
     cases: many(cases),
     teamProfiles: many(teamProfiles),
     // notifications: many(notifications),
+    department: one(departments, {
+        fields: [teams.departmentId],
+        references: [departments.id],
+        relationName: "team_department"
+    }),
     createdByUser: one(users, {
         fields: [teams.createdBy],
         references: [users.id],

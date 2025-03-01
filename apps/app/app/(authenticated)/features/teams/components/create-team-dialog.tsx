@@ -17,11 +17,9 @@ import {
 } from "@repo/design-system/components/ui/drawer";
 import { useIsMobile } from "@repo/design-system/hooks/use-mobile";
 import { useToast } from "@repo/design-system/hooks/use-toast";
-import { useState } from "react";
 import { Plus } from "lucide-react";
 import { TeamFormClient } from "./team-form";
 import type { LawyerProfile } from "../../lawyers/actions/lawyer-actions";
-import type { TeamMemberBasicInfo } from "../../shared/actions/team-members-actions";
 import { createTeam } from "../actions/team-actions";
 
 interface CreateTeamDialogProps {
@@ -39,37 +37,16 @@ export function CreateTeamDialog({ open, onOpenChange, availableLawyers }: Creat
     return null;
   }
 
-  // Map LawyerProfile to TeamMemberBasicInfo, ensuring availableLawyers is an array
-  const mappedUsers: TeamMemberBasicInfo[] = (availableLawyers || []).map(lawyer => ({
-    id: lawyer.id, // This is the profile ID, which is what we need for team members
-    name: lawyer.name,
-    lastName: lawyer.lastName || '',
-    status: true, // Since these are active lawyers
-    email: lawyer.teams?.[0]?.name || `${lawyer.name}.${lawyer.lastName || ''}@example.com`, // Using team name as a fallback, with optional chaining
-    imageUrl: null
-  }));
-
   const FormContent = () => (
     <TeamFormClient
-      users={mappedUsers}
+      lawyers={availableLawyers}
       onSubmit={async (data) => {
         try {
-          const result = await createTeam({
-            name: data.name,
-            description: data.description,
-            practiceArea: data.practiceArea,
-            department: data.department,
-            teamMembers: data.teamMembers
-          });
+          // Call the server action to create team using our normalization pipeline
+          const result = await createTeam(data as any);
 
           // Handle success case
           if (result.success) {
-            toast({
-              title: "¡Equipo Creado Exitosamente! 🎉",
-              description: result.message || `El equipo "${data.name}" ha sido creado con ${data.teamMembers.length} miembros.`,
-              variant: "default",
-            });
-            
             // Close the dialog on success
             onOpenChange(false);
             
@@ -80,15 +57,8 @@ export function CreateTeamDialog({ open, onOpenChange, availableLawyers }: Creat
             };
           } else {
             // Handle error case from the API
-            toast({
-              title: "Error al Crear el Equipo",
-              description: result.message || "No se pudo crear el equipo. Por favor, inténtalo de nuevo.",
-              variant: "destructive",
-            });
-            
             return { 
               success: false, 
-              teamId: '', 
               message: result.message || "Failed to create team" 
             };
           }
@@ -96,15 +66,8 @@ export function CreateTeamDialog({ open, onOpenChange, availableLawyers }: Creat
           // Handle exception case
           console.error('Error creating team:', error);
           
-          toast({
-            title: "Error al Crear el Equipo",
-            description: error instanceof Error ? error.message : "Ocurrió un error inesperado al crear el equipo",
-            variant: "destructive",
-          });
-          
           return { 
             success: false, 
-            teamId: '', 
             message: error instanceof Error ? error.message : 'Failed to create team' 
           };
         }
@@ -151,4 +114,4 @@ export function CreateTeamDialog({ open, onOpenChange, availableLawyers }: Creat
       </DialogContent>
     </Dialog>
   );
-} 
+}

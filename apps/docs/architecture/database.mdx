@@ -1,0 +1,272 @@
+---
+title: 'Database Architecture'
+description: 'Multi-tenant database architecture in Lavel AI'
+---
+
+# Database Architecture
+
+Lavel AI implements a multi-tenant database architecture with tenant isolation as a core design principle. Each tenant (law firm) has their own dedicated database to ensure complete data separation and security.
+
+## Architecture Overview
+
+<Frame>
+  <img src="/images/architecture/database-architecture.png" alt="Database Architecture Diagram" />
+</Frame>
+
+The database architecture consists of two main components:
+
+1. **Main Application Database**: Stores tenant metadata, user-to-tenant mappings, and system-wide configuration
+2. **Tenant Databases**: Separate databases for each tenant containing their business data
+
+## Multi-Tenant Database Isolation
+
+### Tenant Lookup and Connection
+
+The platform uses a tenant lookup mechanism to map subdomain requests to the correct tenant database:
+
+```typescript
+// Simplified tenant lookup implementation
+export async function getTenantConnectionUrl(subdomain: string): Promise<string | null> {
+  // Check in-memory cache first
+  if (connectionUrlCache.has(subdomain)) {
+    return connectionUrlCache.get(subdomain);
+  }
+  
+  try {
+    // Query the main application database
+    const db = getMainDbClient();
+    const organization = await db.query.organizations.findFirst({
+      where: eq(organizations.slug, subdomain),
+      with: {
+        project: {
+          columns: {
+            connectionUrl: true
+          }
+        }
+      }
+    });
+    
+    if (!organization?.project?.connectionUrl) {
+      return null;
+    }
+    
+    // Cache the connection URL
+    const connectionUrl = organization.project.connectionUrl;
+    connectionUrlCache.set(subdomain, connectionUrl);
+    
+    return connectionUrl;
+  } catch (error) {
+    logger.error('Error in tenant lookup', {
+      error: error.message,
+      subdomain
+    });
+    return null;
+  }
+}
+```
+
+### Tenant Database Client
+
+The middleware automatically sets up the appropriate database client for each request:
+
+```typescript
+// Example middleware for tenant database initialization
+export async function middleware(request: NextRequest) {
+  const subdomain = getSubdomainFromRequest(request);
+  
+  if (!subdomain || subdomain === 'www') {
+    // Handle main domain requests
+    return NextResponse.next();
+  }
+  
+  // Get the tenant's database connection URL
+  const connectionUrl = await getTenantConnectionUrl(subdomain);
+  
+  if (!connectionUrl) {
+    // Handle invalid tenant
+    return NextResponse.redirect(new URL('/invalid-tenant', request.url));
+  }
+  
+  // Initialize tenant database client
+  const tenantDb = createTenantDbClient(connectionUrl);
+  
+  // Store in context for this request
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-tenant-id', subdomain);
+  requestHeaders.set('x-tenant-db-initialized', 'true');
+  
+  // Continue with the request
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders
+    }
+  });
+}
+```
+
+### Accessing Tenant Database
+
+Application code accesses the tenant-specific database client using a utility function:
+
+```typescript
+// Example usage in a service
+import { getTenantDbClient } from '@/utils/tenant-db';
+
+export const clientService = {
+  async getClients() {
+    const db = getTenantDbClient();
+    return db.query.clients.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+  },
+  
+  async createClient(clientData) {
+    const db = getTenantDbClient();
+    const result = await db.insert(db.clients).values(clientData);
+    return result.insertId;
+  }
+};
+```
+
+## Database Schema Management
+
+### Main Database Schema
+
+The main application database schema includes:
+
+```typescript
+// Main database schema (simplified)
+export const organizations = pgTable('organizations', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
+});
+
+export const projects = pgTable('projects', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  organizationId: integer('organization_id').references(() => organizations.id),
+  connectionUrl: text('connection_url').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
+});
+
+export const userOrganizations = pgTable('user_organizations', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull(), // Clerk user ID
+  organizationId: integer('organization_id').references(() => organizations.id),
+  role: text('role').notNull(),
+  isDefault: boolean('is_default').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
+});
+```
+
+### Tenant Database Schema
+
+Each tenant database follows a consistent schema:
+
+```typescript
+// Tenant database schema example (simplified)
+export const clients = pgTable('clients', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email'),
+  phone: text('phone'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
+});
+
+export const cases = pgTable('cases', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  clientId: integer('client_id').references(() => clients.id),
+  status: text('status').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
+});
+
+// Other tenant-specific tables...
+```
+
+## Database Migrations
+
+Tenant database migrations are managed through a migration utility:
+
+```typescript
+// Example migration runner function
+async function runTenantMigrations(connectionUrl: string, targetVersion?: string) {
+  logger.info('Running migrations for tenant', { targetVersion });
+  
+  const migrator = new Migrator({
+    db: createDbClient(connectionUrl),
+    provider: 'postgresql',
+    migrationFolder: resolve(__dirname, '../migrations')
+  });
+  
+  try {
+    const { success, error, results } = await migrator.migrateToLatest();
+    
+    if (!success) {
+      logger.error('Migration failed', { error });
+      throw error;
+    }
+    
+    logger.info('Migration successful', { 
+      results: results.map(r => r.migrationName) 
+    });
+    
+    return { success, results };
+  } catch (error) {
+    logger.error('Migration error', { error: error.message });
+    throw error;
+  }
+}
+```
+
+## Data Access Patterns
+
+### Tenant-aware Repository Pattern
+
+```typescript
+// Example repository with tenant awareness
+export class CaseRepository {
+  constructor(private db = getTenantDbClient()) {}
+  
+  async findById(id: number) {
+    return this.db.query.cases.findFirst({
+      where: eq(cases.id, id),
+      with: {
+        client: true,
+        documents: true
+      }
+    });
+  }
+  
+  async findByClientId(clientId: number) {
+    return this.db.query.cases.findMany({
+      where: eq(cases.clientId, clientId),
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+  
+  async create(caseData) {
+    const result = await this.db.insert(cases).values(caseData);
+    return result.insertId;
+  }
+  
+  // Other repository methods...
+}
+```
+
+## Best Practices
+
+1. **Always Use getTenantDbClient()**: Never hardcode database connections
+2. **Handle Connection Errors**: Implement proper error handling for database failures
+3. **Use Transactions**: For operations that modify multiple tables
+4. **Implement Connection Pooling**: To manage database connections efficiently
+5. **Cache Common Queries**: Use React Query for client-side caching
+6. **Lock Migrations During Updates**: Prevent concurrent migration issues
+7. **Regular Database Backups**: Each tenant database should be backed up regularly

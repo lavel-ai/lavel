@@ -1,0 +1,37 @@
+---
+title: 'ADR-001: React Query'
+description: 'Decision to adopt React Query for state management'
+---
+
+# ADR-001: Adopt React Query for State Management
+
+## Context
+
+- Components were implementing their own data fetching logic
+- Duplicate network requests were occurring for the same data
+- Error handling and loading states were inconsistent
+- No caching strategy existed, causing performance issues
+
+## Decision
+
+We will adopt React Query as our primary solution for server state management.
+
+## Consequences
+
+### Positive
+
+- Centralized data fetching and caching reduces network requests
+- Consistent loading and error states across the application
+- Automatic background refetching keeps data fresh
+- Built-in pagination and infinite scroll support
+- Devtools for debugging and cache inspection
+
+### Negative
+
+- Learning curve for developers new to React Query
+- Additional dependency to maintain
+- Can increase bundle size slightly
+
+## Status
+
+Accepted (2025-03-01)

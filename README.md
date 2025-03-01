@@ -29,7 +29,6 @@ This repository is structured as a monorepo using Turbo Repo, organizing code in
 │ ├── email/ # Email templates (using react.email)
 │ ├── storybook/ # Storybook for UI component development
 │ ├── web/ # Marketing/landing page website
-│ └── studio/ # Prisma Studio (database management UI)
 ├── packages/ # Reusable packages
 │ ├── ai/ # AI-related logic and components
 │ ├── analytics/ # Analytics integration (PostHog, Google Analytics, Vercel Analytics)

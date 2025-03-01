@@ -54,6 +54,36 @@
       "pages": ["introduction", "quickstart", "development"]
     },
     {
+      "group": "Architecture",
+      "pages": [
+        "architecture/overview",
+        "architecture/state-management",
+        "architecture/service-layer",
+        "architecture/normalization",
+        "architecture/observability",
+        "architecture/multi-tenancy"
+      ]
+    },
+    {
+      "group": "Architecture Decisions",
+      "pages": [
+        "architecture/decisions/index",
+        "architecture/decisions/001-react-query",
+        "architecture/decisions/002-tenant-isolation",
+        "architecture/decisions/003-data-normalization"
+      ]
+    },
+    {
+      "group": "Component Documentation",
+      "pages": [
+        "components/overview",
+        "components/ui-components",
+        "components/hooks",
+        "components/services",
+        "components/stores"
+      ]
+    },
+    {
       "group": "Essentials",
       "pages": [
         "essentials/markdown",

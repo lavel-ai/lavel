@@ -1,0 +1,197 @@
+---
+title: 'Data Normalization'
+description: 'How data quality and consistency are maintained across Lavel AI'
+---
+
+# Data Normalization Architecture
+
+The Data Normalization Architecture ensures data quality, consistency, and reliability across the Lavel AI platform. This architecture handles all incoming data - whether from forms, API payloads, or bulk imports.
+
+## Architecture Overview
+
+<Frame>
+  <img src="/images/architecture/normalization-pipeline.png" alt="Normalization Pipeline Architecture" />
+</Frame>
+
+The normalization process follows a four-stage pipeline:
+
+1. **Sanitization**: Cleans input data
+2. **Normalization**: Standardizes data formats
+3. **Validation**: Enforces data integrity
+4. **Data Quality Monitoring**: Tracks quality metrics
+
+## Core Components
+
+### Schema Registry
+
+The Schema Registry is the central repository for data schemas, normalization rules, and validation logic.
+
+```typescript
+// Example schema definition in the registry
+schemaRegistry.register({
+  name: 'client',
+  version: '1.0.0',
+  schema: z.object({
+    name: z.string().min(1),
+    email: z.string().email(),
+    phone: z.string().optional(),
+  }),
+  config: {
+    name: { trim: true, titleCase: true },
+    email: { lowercase: true },
+    phone: { formatPhone: true, defaultRegion: 'MX' },
+  }
+});
+
+// Retrieving a schema
+const clientSchema = schemaRegistry.get('client');
+```
+
+### Transform Pipeline
+
+The Transform Pipeline orchestrates the progression of data through each stage of the normalization process:
+
+```typescript
+// Example pipeline for a team entity
+const teamPipeline = createTransformPipeline({
+  name: 'teamPipeline',
+  stages: [
+    {
+      name: 'sanitize',
+      transform: (data, context) => sanitizeTeamData(data)
+    },
+    {
+      name: 'normalize',
+      transform: (data, context) => normalizeTeamData(data)
+    },
+    {
+      name: 'validate',
+      transform: (data, context) => validateTeamData(data)
+    },
+    {
+      name: 'monitor',
+      transform: (data, context) => monitorDataQuality('team', data)
+    }
+  ],
+  resilienceOptions: {
+    strategy: 'use-partial',
+    logErrors: true
+  }
+});
+```
+
+### Resilient Normalizer
+
+The Resilient Normalizer provides error recovery strategies to ensure the pipeline continues functioning even when encountering invalid data:
+
+```typescript
+const resilientNormalizer = new ResilientNormalizer({
+  strategy: 'use-default', // Options: 'reject', 'use-default', 'use-partial', 'use-original'
+  defaultValues: { name: 'Default Team Name', members: [] },
+  logErrors: true
+});
+
+// Using the resilient normalizer
+const result = await resilientNormalizer.normalize(teamSchema, inputData);
+```
+
+### Data Quality Monitoring
+
+The Data Quality Monitoring component calculates and reports metrics on data quality:
+
+```typescript
+// Example data quality metrics generation
+function monitorDataQuality(entityType, data) {
+  const metrics = {
+    completeness: calculateCompleteness(data),
+    validity: calculateValidity(data, schema),
+    consistency: calculateConsistency(data),
+    // Other metrics...
+  };
+  
+  // Report metrics to dashboard
+  reportMetrics(entityType, metrics);
+  
+  return metrics;
+}
+```
+
+## Using the Normalization Pipeline
+
+### In Form Submissions
+
+```typescript
+// React component using normalization
+function ClientForm() {
+  const handleSubmit = async (formData) => {
+    try {
+      // Process through pipeline
+      const result = await clientPipeline.process(formData, {
+        source: 'web-form',
+        userId: currentUser.id
+      });
+      
+      // Show transformation feedback
+      if (result.changes.length > 0) {
+        showFeedback(result.changes);
+      }
+      
+      // Submit normalized data to API
+      await saveClient(result.result);
+      
+    } catch (error) {
+      // Handle validation errors
+      showErrors(error);
+    }
+  };
+  
+  // Form JSX...
+}
+```
+
+### In Bulk Imports
+
+```typescript
+// Example bulk normalization
+async function importClients(csvData) {
+  const bulkNormalizer = createBulkNormalizer({
+    schema: clientSchema,
+    batchSize: 100,
+    reportProgress: true,
+    resilienceOptions: { 
+      strategy: 'use-partial',
+      logErrors: true 
+    }
+  });
+
+  const results = await bulkNormalizer.process(csvData, {
+    continueOnError: true,
+    context: { source: 'csv-import' }
+  });
+  
+  return {
+    successful: results.items,
+    failed: results.errors,
+    metrics: results.metrics
+  };
+}
+```
+
+## Configuration Options
+
+The normalization architecture supports various configuration options:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `strictness` | Validation strictness (strict/moderate/relaxed) | `moderate` |
+| `enableFeedback` | Show normalization feedback to users | `true` |
+| `defaultLocale` | Default locale for normalization | `en-US` |
+| `defaultPhoneRegion` | Default region for phone formatting | `MX` |
+
+## Best Practices
+
+1. **Register Schemas Early**: Define and register schemas during application initialization
+2. **Use Contextual Processing**: Always provide context (userId, source) for auditing
+3. **Handle Errors Gracefully**: Use resilience strategies appropriate for each use case
+4. **Monitor Data Quality**: Regularly review the Data Quality Dashboard
+5. **Test Normalizers**: Write comprehensive tests for custom normalizer functions

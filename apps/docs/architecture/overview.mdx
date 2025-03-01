@@ -1,0 +1,63 @@
+---
+title: 'Architecture Overview'
+description: 'The high-level architecture of the Lavel AI platform'
+---
+
+# Lavel AI Architecture
+
+Lavel AI is built as a multi-tenant SaaS platform for legal professionals in Mexico, with strong isolation between tenants (law firms). The architecture follows a layered approach with clear separation of concerns.
+
+## System Context
+
+<Frame>
+  <img src="/images/architecture/system-context.png" alt="System Context Diagram" />
+</Frame>
+
+The Lavel AI platform serves multiple law firms, each accessing their own isolated workspace through a unique subdomain. The platform integrates with external services for authentication, payment processing, and email communication.
+
+## Architectural Layers
+
+Our architecture consists of five primary layers:
+
+### UI Layer
+The presentation layer built with React components that users directly interact with.
+
+### State Management Layer
+Centralizes data handling using React Query for server state and context/Zustand for UI state.
+
+### Service Layer
+Provides API interfaces for features to interact with backend data and processes.
+
+### Normalization Layer
+Ensures data quality and consistency through a transform pipeline.
+
+### Database Layer
+Stores tenant data in isolated PostgreSQL databases via Neon.
+
+## Supporting Components
+
+Beyond the core layers, the architecture includes:
+
+- **Observability**: Logging, monitoring, and error tracking
+- **Analytics**: User behavior tracking
+- **Feature Flags**: Controlled feature rollout
+- **Real-time Collaboration**: Synchronization for multi-user editing
+
+## Next Steps
+
+Explore our detailed documentation for each architectural layer:
+
+<CardGroup cols={2}>
+  <Card title="State Management" icon="database" href="/architecture/state-management">
+    Learn how we manage application state
+  </Card>
+  <Card title="Service Layer" icon="server" href="/architecture/service-layer">
+    Understand our API service structure
+  </Card>
+  <Card title="Normalization" icon="filter" href="/architecture/normalization">
+    Explore our data quality pipeline
+  </Card>
+  <Card title="Observability" icon="chart-line" href="/architecture/observability">
+    See how we monitor and debug
+  </Card>
+</CardGroup>

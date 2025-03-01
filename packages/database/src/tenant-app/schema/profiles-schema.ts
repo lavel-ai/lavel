@@ -1,10 +1,11 @@
-import { pgTable } from "drizzle-orm/pg-core";
+import { integer, pgTable } from "drizzle-orm/pg-core";
 import { uuid, timestamp, varchar, date, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { users } from "./users-schema";
 import { teamProfiles } from "./team-profiles-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { profilePracticeAreas } from "./profile-practice-areas-schema";
 
 export const profiles = pgTable("profiles", {
     // Identifiers
@@ -19,7 +20,6 @@ export const profiles = pgTable("profiles", {
     birthDate: date("birth_date"),
 
     // Professional Information
-    practiceArea: varchar("practice_area", { length: 255 }),
     seniority: date("seniority"),
     isLeadLawyer: boolean("is_lead_lawyer").default(false),
     
@@ -46,6 +46,7 @@ export const profilesRelations = relations(profiles, ({ one, many }) => ({
         relationName: "profile_user"
     }),
     teamProfiles: many(teamProfiles),
+    practiceAreas: many(profilePracticeAreas),
     createdByUser: one(users, {
         fields: [profiles.createdBy],
         references: [users.id],

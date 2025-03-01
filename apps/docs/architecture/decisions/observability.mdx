@@ -1,0 +1,221 @@
+---
+title: 'Observability'
+description: 'Monitoring, logging, and error tracking in Lavel AI'
+---
+
+# Observability Architecture
+
+The Observability Architecture provides comprehensive visibility into the Lavel AI platform's behavior, performance, and errors. This system enables developers to monitor, debug, and optimize the application.
+
+## Architecture Overview
+
+<Frame>
+  <img src="/images/architecture/observability-architecture.png" alt="Observability Architecture Diagram" />
+</Frame>
+
+Our observability stack consists of four main components:
+
+1. **Logging**: Structured logging across all application layers
+2. **Error Tracking**: Centralized error collection and analysis
+3. **Performance Monitoring**: Tracking application performance metrics
+4. **Status Monitoring**: External health checks and status pages
+
+## Core Components
+
+### Logging System
+
+Our logging system captures structured logs at different levels of detail and importance:
+
+```typescript
+// Example logging in a service
+import { logger } from '@repo/observability/log';
+
+export const caseService = {
+  async getCases(params = {}) {
+    logger.info('Fetching cases', { params });
+    
+    try {
+      // Implementation...
+      
+      logger.info('Cases fetched successfully', { 
+        count: results.length, 
+        totalCount 
+      });
+      
+      return results;
+    } catch (error) {
+      logger.error('Error fetching cases', { 
+        error: error.message, 
+        params 
+      });
+      throw error;
+    }
+  }
+};
+```
+
+### Error Tracking
+
+We use a centralized error tracking system to capture, analyze, and alert on errors:
+
+```typescript
+// Example error tracking in a React component
+import { captureError } from '@repo/observability/error';
+
+function CaseList() {
+  const { data, error } = useCases();
+  
+  useEffect(() => {
+    if (error) {
+      captureError(error, {
+        component: 'CaseList',
+        context: 'data fetching'
+      });
+    }
+  }, [error]);
+  
+  // Component JSX...
+}
+```
+
+### Performance Monitoring
+
+Performance monitoring tracks key metrics about application behavior:
+
+```typescript
+// Example instrumenting a function with performance tracking
+import { withPerformanceTracking } from '@repo/observability/instrumentation';
+
+export const fetchClientDetails = withPerformanceTracking(
+  async (clientId) => {
+    // Implementation...
+    return clientDetails;
+  },
+  'fetchClientDetails'
+);
+```
+
+### Status Monitoring
+
+The status monitoring system provides health checks and a public status page:
+
+```typescript
+// Example health check endpoint
+export async function GET(req: Request) {
+  try {
+    // Check database connection
+    const dbStatus = await checkDatabaseConnection();
+    
+    // Check external services
+    const externalServicesStatus = await checkExternalServices();
+    
+    const isHealthy = dbStatus.healthy && externalServicesStatus.healthy;
+    
+    return NextResponse.json({
+      status: isHealthy ? 'healthy' : 'degraded',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: dbStatus,
+        externalServices: externalServicesStatus
+      }
+    }, { status: isHealthy ? 200 : 503 });
+  } catch (error) {
+    return NextResponse.json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    }, { status: 500 });
+  }
+}
+```
+
+## Integration Points
+
+### React Query Integration
+
+Our observability system integrates with React Query to track data fetching:
+
+```typescript
+// Example React Query client configuration with observability
+import { QueryClient } from '@tanstack/react-query';
+import { trackQueryError, trackQuerySuccess } from '@repo/observability/instrumentation';
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Other options...
+      onError: (error, query) => {
+        trackQueryError(error, query.queryKey);
+      },
+      onSuccess: (data, query) => {
+        trackQuerySuccess(query.queryKey);
+      }
+    }
+  }
+});
+```
+
+### Middleware Integration
+
+We capture request metrics using Next.js middleware:
+
+```typescript
+// Example middleware with observability
+import { NextResponse } from 'next/server';
+import { recordRequestMetrics } from '@repo/observability/instrumentation';
+
+export async function middleware(request) {
+  const startTime = Date.now();
+  
+  // Process the request
+  const response = NextResponse.next();
+  
+  // Record metrics
+  const duration = Date.now() - startTime;
+  recordRequestMetrics({
+    path: request.nextUrl.pathname,
+    method: request.method,
+    status: response.status,
+    duration,
+    tenant: request.headers.get('x-tenant-id')
+  });
+  
+  return response;
+}
+```
+
+## Dashboards and Alerts
+
+The observability data feeds into dashboards and alerting systems:
+
+### Error Dashboard
+
+<Frame>
+  <img src="/images/architecture/error-dashboard.png" alt="Error Dashboard" />
+</Frame>
+
+The Error Dashboard provides:
+- Real-time error tracking
+- Error trends and patterns
+- User impact assessment
+- Error resolution workflows
+
+### Performance Dashboard
+
+<Frame>
+  <img src="/images/architecture/performance-dashboard.png" alt="Performance Dashboard" />
+</Frame>
+
+The Performance Dashboard shows:
+- API response times
+- Client-side rendering performance
+- Database query performance
+- Resource utilization
+
+## Best Practices
+
+1. **Log with Context**: Always include relevant context in log messages
+2. **Use Structured Logging**: Use structured data instead of string concatenation
+3. **Log at Appropriate Levels**: Use the right log level (debug, info, warn, error)
+4. **Track User Context**: Include user and tenant information in error reports
+5. **Set Up Alerts**: Configure alerts for critical errors and performance degradation

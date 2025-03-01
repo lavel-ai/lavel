@@ -1,0 +1,51 @@
+---
+title: 'Architecture Decisions'
+description: 'Key architecture decisions and their rationale'
+---
+
+# Architecture Decision Records
+
+This section documents the significant architectural decisions made in the Lavel AI platform.
+
+| ID | Decision | Status | Date |
+|----|----------|--------|------|
+| [ADR-001](/architecture/decisions/001-react-query) | Adopt React Query for State Management | Accepted | 2023-06-15 |
+| [ADR-002](/architecture/decisions/002-tenant-isolation) | Multi-tenant Isolation with Separate Databases | Accepted | 2023-05-20 |
+| [ADR-003](/architecture/decisions/003-data-normalization) | Data Normalization Pipeline | Accepted | 2023-07-10 |
+
+## What is an ADR?
+
+Architecture Decision Records (ADRs) capture important architectural decisions made along with the context and consequences. Each ADR includes:
+
+- **Context**: The situation that calls for a decision
+- **Decision**: The choice that was made
+- **Consequences**: The resulting effects, both positive and negative
+- **Status**: Current status (proposed, accepted, superseded, etc.)
+
+## Creating New ADRs
+
+When making significant architectural decisions:
+
+1. Create a new file in the `docs/architecture/decisions/` directory
+2. Follow the ADR template format
+3. Present to the team for review
+4. Update the status based on the outcome
+   - Use Mermaid for code-based diagrams (Mintlify supports this)
+
+2. **Include Code Examples:**
+   - Use the `<CodeGroup>` component for tabbed code examples
+   - Show real examples from your codebase
+
+3. **Create Interactive Elements:**
+   - Use `<Card>` and `<CardGroup>` for navigation
+   - Use `<Tabs>` for alternative approaches
+
+4. **Link Related Content:**
+   - Create cross-references between documents
+   - Use "See Also" sections at the end of pages
+
+5. **Keep Documentation Updated:**
+   - Establish a process for updating docs with code changes
+   - Review documentation quarterly
+
+Would you like me to elaborate on any specific part of this documentation plan or create a detailed example for any particular section?

@@ -1,0 +1,97 @@
+---
+title: 'State Management'
+description: 'How state is managed across the Lavel AI platform'
+---
+
+# State Management
+
+Lavel AI uses a hybrid state management approach, tailored for different types of state:
+
+## React Query for Server State
+
+We use React Query to manage all server-derived data, providing:
+
+- Automatic caching and invalidation
+- Loading, error, and success states
+- Background refetching
+- Pagination and infinite queries
+
+<CodeGroup>
+```tsx Example React Query Hook
+import { useQuery } from '@tanstack/react-query';
+import { caseService } from '@/services/case-service';
+
+export function useCases(params = {}) {
+  return useQuery({
+    queryKey: ['cases', params],
+    queryFn: () => caseService.getCases(params),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+```
+</CodeGroup>
+
+## React Context for Feature State
+
+Feature-specific state that needs to be shared between multiple components is managed using React Context:
+
+<CodeGroup>
+```tsx Feature Context Example
+// Context definition
+export const CaseFilterContext = createContext(null);
+
+export function CaseFilterProvider({ children }) {
+  const [filters, setFilters] = useState({
+    status: null,
+    practiceAreaIds: [],
+  });
+  
+  return (
+    <CaseFilterContext.Provider value={{ filters, setFilters }}>
+      {children}
+    </CaseFilterContext.Provider>
+  );
+}
+
+// Usage in components
+export function CaseFilterBar() {
+  const { filters, setFilters } = useContext(CaseFilterContext);
+  // ...
+}
+```
+</CodeGroup>
+
+## Zustand for Global State
+
+For global application state that spans multiple features, we use Zustand:
+
+<CodeGroup>
+```tsx Zustand Store Example
+import { create } from 'zustand';
+
+export const useNotificationStore = create((set) => ({
+  notifications: [],
+  
+  addNotification: (notification) => set((state) => ({
+    notifications: [...state.notifications, notification]
+  })),
+  
+  removeNotification: (id) => set((state) => ({
+    notifications: state.notifications.filter(n => n.id !== id)
+  })),
+}));
+
+// Usage anywhere in the app
+function Header() {
+  const { notifications } = useNotificationStore();
+  // ...
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+- Use React Query for any data that comes from an API
+- Keep UI state (forms, toggles, selections) in component state when possible
+- Use React Context for state shared within a single feature
+- Use Zustand for truly global state or cross-feature state

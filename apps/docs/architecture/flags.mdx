@@ -1,0 +1,265 @@
+---
+title: 'Feature Flags'
+description: 'Controlled feature rollout and experimentation'
+---
+
+# Feature Flags Architecture
+
+Feature flags enable gradual rollout of features, A/B testing, and the ability to quickly disable problematic features without a code deployment.
+
+## Architecture Overview
+
+<Frame>
+  <img src="/images/architecture/feature-flags-architecture.png" alt="Feature Flags Architecture" />
+</Frame>
+
+The feature flags system comprises:
+
+1. **Flag Definitions**: Centralized configuration of available flags
+2. **Flag Evaluation Engine**: Logic for determining if a flag is enabled
+3. **UI Components**: React components for conditional rendering
+4. **Admin Interface**: Dashboard for managing flags
+
+## Integration with Tenant Architecture
+
+The feature flags system integrates with our multi-tenant architecture:
+
+```typescript
+// apps/app/middleware.ts
+const securityHeaders = env.FLAGS_SECRET
+  ? noseconeMiddleware(noseconeOptionsWithToolbar)
+  : noseconeMiddleware(noseconeOptions);
+```
+
+The `FLAGS_SECRET` environment variable controls access to the feature flags toolbar, allowing administrators to toggle flags in real-time.
+
+### Tenant-aware Flag Evaluation
+
+Feature flags respect tenant boundaries by incorporating tenant ID in evaluation:
+
+```typescript
+// Flag evaluation with tenant context
+const showBetaFeature = evaluateFlag('beta-feature', {
+  tenantId: params.tenant,
+  userId: user.id,
+  environment: process.env.NODE_ENV
+});
+```
+
+### Flag Toolbar Integration
+
+The flags toolbar is added at the root layout level:
+
+```typescript
+// apps/app/app/layout.tsx
+const RootLayout = ({ children }: RootLayoutProperties) => (
+  <html lang="en" className={fonts} suppressHydrationWarning>
+    <body>
+      <DesignSystemProvider>
+        {children}
+      </DesignSystemProvider>
+      <Toolbar />
+    </body>
+  </html>
+);
+```
+
+### Beta Feature Indicator
+
+When a beta feature is available, a notification is shown to users:
+
+```typescript
+// apps/app/app/(authenticated)/layout.tsx
+const betaFeature = await showBetaFeature();
+
+return (
+  {/* ... other providers ... */}
+  <GlobalSidebar>
+    {betaFeature && (
+      <div className="m-4 rounded-full bg-success p-1.5 text-center text-sm text-success-foreground">
+        Beta feature now available
+      </div>
+    )}
+    {children}
+  </GlobalSidebar>
+  {/* ... */}
+);
+```
+
+## Core Components
+
+### Flag Configuration
+
+Feature flags are defined in a centralized configuration:
+
+```typescript
+// packages/feature-flags/flags.ts
+export const featureFlags = {
+  // User-facing features
+  'case-bulk-actions': {
+    description: 'Enable bulk actions on case list page',
+    defaultValue: false,
+    environments: {
+      development: true,
+      staging: true,
+      production: false
+    }
+  },
+  
+  'new-document-editor': {
+    description: 'Use the new document editor with collaboration',
+    defaultValue: false,
+    rolloutPercentage: 20, // 20% of users
+    environments: {
+      development: true,
+      staging: true,
+      production: false
+    }
+  },
+  
+  // Infrastructure features
+  'use-new-search-api': {
+    description: 'Use the new search API implementation',
+    defaultValue: false,
+    environments: {
+      development: true,
+      staging: false,
+      production: false
+    }
+  }
+};
+```
+
+### Flag Evaluation Engine
+
+The flag evaluation engine determines whether a flag is enabled based on context:
+
+```typescript
+// packages/feature-flags/evaluator.ts
+export function evaluateFlag(
+  flagName: string, 
+  context: {
+    userId?: string;
+    tenantId?: string;
+    environment: 'development' | 'staging' | 'production';
+  }
+): boolean {
+  const flag = featureFlags[flagName];
+  
+  if (!flag) {
+    return false;
+  }
+  
+  // Check environment-specific override
+  if (flag.environments && flag.environments[context.environment] !== undefined) {
+    return flag.environments[context.environment];
+  }
+  
+  // Check user percentage rollout if applicable
+  if (flag.rolloutPercentage !== undefined && context.userId) {
+    const userHash = hashString(context.userId);
+    const userPercentile = userHash % 100;
+    return userPercentile < flag.rolloutPercentage;
+  }
+  
+  // Check tenant override if applicable
+  if (flag.tenantOverrides && context.tenantId) {
+    if (flag.tenantOverrides[context.tenantId] !== undefined) {
+      return flag.tenantOverrides[context.tenantId];
+    }
+  }
+  
+  // Fall back to default value
+  return flag.defaultValue;
+}
+```
+
+### React Integration
+
+A React hook provides easy access to feature flags in components:
+
+```typescript
+// packages/feature-flags/use-feature-flag.ts
+import { useContext, useMemo } from 'react';
+import { FeatureFlagContext } from './context';
+import { evaluateFlag } from './evaluator';
+
+export function useFeatureFlag(flagName: string): boolean {
+  const context = useContext(FeatureFlagContext);
+  
+  return useMemo(() => {
+    return evaluateFlag(flagName, {
+      userId: context.userId,
+      tenantId: context.tenantId,
+      environment: context.environment
+    });
+  }, [flagName, context.userId, context.tenantId, context.environment]);
+}
+
+// Usage in components
+function CaseList() {
+  const showBulkActions = useFeatureFlag('case-bulk-actions');
+  
+  return (
+    <div>
+      {showBulkActions && (
+        <div className="bulk-actions">
+          <Button>Bulk Assign</Button>
+          <Button>Bulk Archive</Button>
+        </div>
+      )}
+      
+      {/* Rest of component */}
+    </div>
+  );
+}
+```
+
+### Server-side Evaluation
+
+Feature flags can also be evaluated on the server:
+
+```typescript
+// Example server-side flag check
+import { evaluateFlag } from '@repo/feature-flags/evaluator';
+
+export async function GET(request: Request) {
+  const tenantId = request.headers.get('x-tenant-id');
+  const userId = request.headers.get('x-user-id');
+  
+  const useNewSearchApi = evaluateFlag('use-new-search-api', {
+    tenantId,
+    userId,
+    environment: process.env.NODE_ENV
+  });
+  
+  if (useNewSearchApi) {
+    return await newSearchImplementation(request);
+  } else {
+    return await legacySearchImplementation(request);
+  }
+}
+```
+
+## Flag Management UI
+
+<Frame>
+  <img src="/images/architecture/feature-flags-ui.png" alt="Feature Flags Management UI" />
+</Frame>
+
+The Flag Management UI provides:
+
+1. **Flag Overview**: List of all flags and their current status
+2. **Environment Controls**: Toggle flags by environment
+3. **Percentage Rollout**: Control gradual rollouts
+4. **Tenant Overrides**: Enable flags for specific tenants
+5. **Audit Logs**: Track changes to flag configurations
+
+## Best Practices
+
+1. **Default to Off**: New features should be off by default
+2. **Short-lived Flags**: Remove flags after features are fully launched
+3. **Document Flags**: Keep flags well-documented and organized
+4. **Clean Flag Names**: Use consistent naming like `feature-name` or `use-new-feature`
+5. **Performance Considerations**: Cache flag evaluations to reduce overhead
+6. **Testing**: Test both enabled and disabled states of flags

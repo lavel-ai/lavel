@@ -10,7 +10,8 @@ import { useIsMobile } from '@repo/design-system/hooks/use-mobile';
 import { useToast } from '@repo/design-system/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState, useMemo } from 'react';
-import { Users, Briefcase, Building, Search } from 'lucide-react';
+import { Users, Briefcase, Building, Search, PlusCircle } from 'lucide-react';
+import { Button } from '@repo/design-system/components/ui/button';
 import {
   type LawyerFilters,
   type LawyerProfile,
@@ -24,23 +25,24 @@ import {
 import { SearchBar } from '../features/my-firm/components/search-bar';
 import { SkeletonCard } from '../features/my-firm/components/skeleton-card';
 import { useMyFirmStore } from '../features/my-firm/store/my-firm-store';
-// import {
-//   type TeamWithMembers,
-//   getTeams,
-// } from '../features/teams/actions/team-actions';
+import {
+  type TeamWithMembers,
+  getTeams,
+} from '../features/teams/actions/team-actions';
 import { CreateTeamDialog } from '../features/teams/components/create-team-dialog';
 import { TeamCard } from '../features/teams/components/team-card';
-import { ClientsContainer, Client } from '../features/clients/components/clients-container';
+import { ClientsContainer } from '../features/clients/components/clients-container';
 import { getClients } from '../features/clients/actions/get-client-actions';
+import { Alert, AlertDescription } from '@repo/design-system/components/ui/alert';
 
 type MyFirmContentProps = {
-  // initialTeams: TeamWithMembers[];
+  initialTeams: TeamWithMembers[];
   initialLawyers: LawyerProfile[];
-  initialClients: Client[]; // Now using the proper Client type
+  initialClients: any[]; // Using any for now as Client type might need to be imported
 };
 
 export function MyFirmContent({
-  // initialTeams,
+  initialTeams,
   initialLawyers,
   initialClients,
 }: MyFirmContentProps) {
@@ -102,32 +104,42 @@ export function MyFirmContent({
     [pagination, setPagination]
   );
 
-  // // Set up React Query for teams
-  // const {
-  //   data: teams,
-  //   isLoading: isLoadingTeams,
-  //   error: teamsError,
-  // } = useQuery({
-  //   queryKey: ['teams', filters, pagination, sort],
-  //   queryFn: async () => {
-  //     setIsLoading(true);
-  //     try {
-  //       const result = await getTeams();
-  //       if (result.status === 'error') {
-  //         toast({
-  //           title: 'Error',
-  //           description: result.message,
-  //           variant: 'destructive',
-  //         });
-  //         return initialTeams;
-  //       }
-  //       return result.data || initialTeams;
-  //     } finally {
-  //       setIsLoading(false);
-  //     }
-  //   },
-  //   initialData: initialTeams,
-  // });
+  // Set up React Query for teams
+  const {
+    data: teams,
+    isLoading: isLoadingTeams,
+    error: teamsError,
+    refetch: refetchTeams
+  } = useQuery({
+    queryKey: ['teams', filters, pagination, sort],
+    queryFn: async () => {
+      setIsLoading(true);
+      try {
+        const result = await getTeams({
+          search: filters.search,
+          practiceArea: filters.practiceArea ? [filters.practiceArea] : undefined,
+          department: filters.department ? [filters.department] : undefined,
+          page: pagination.page,
+          limit: pagination.limit,
+          sort: sort.field,
+          order: sort.direction,
+        });
+        
+        if (result.status === 'error') {
+          toast({
+            title: 'Error',
+            description: result.message,
+            variant: 'destructive',
+          });
+          return initialTeams;
+        }
+        return result.data || initialTeams;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    initialData: initialTeams,
+  });
 
   // Set up React Query for lawyers
   const {
@@ -198,25 +210,56 @@ export function MyFirmContent({
   // Memoize the total clients count to avoid unnecessary re-renders
   const totalClients = useMemo(() => clients.length, [clients]);
 
+  // Handle team creation success
+  const handleTeamCreated = useCallback(() => {
+    refetchTeams();
+    toast({
+      title: "Team Created Successfully",
+      description: "Your new team has been created",
+    });
+  }, [refetchTeams, toast]);
+
   const handleTeamEdit = useCallback(async (teamId: string) => {
     // Implement team edit logic
     console.log('Edit team:', teamId);
-  }, []);
+    // Show a toast for now
+    toast({
+      title: "Edit Team",
+      description: `Editing team with ID ${teamId}`,
+    });
+  }, [toast]);
 
   const handleTeamDelete = useCallback(async (teamId: string) => {
     // Implement team delete logic
     console.log('Delete team:', teamId);
-  }, []);
+    // Show a confirmation toast for now
+    toast({
+      title: "Delete Team",
+      description: `Are you sure you want to delete this team?`,
+      variant: "destructive",
+    });
+  }, [toast]);
 
   const handleLawyerEdit = useCallback(async (lawyerId: string) => {
     // Implement lawyer edit logic
     console.log('Edit lawyer:', lawyerId);
-  }, []);
+    // Show a toast for now
+    toast({
+      title: "Edit Lawyer",
+      description: `Editing lawyer with ID ${lawyerId}`,
+    });
+  }, [toast]);
 
   const handleLawyerDelete = useCallback(async (lawyerId: string) => {
     // Implement lawyer delete logic
     console.log('Delete lawyer:', lawyerId);
-  }, []);
+    // Show a confirmation toast for now
+    toast({
+      title: "Delete Lawyer",
+      description: `Are you sure you want to remove this lawyer?`,
+      variant: "destructive",
+    });
+  }, [toast]);
 
   return (
     <div className="w-full max-w-full">
@@ -226,7 +269,7 @@ export function MyFirmContent({
         <SearchBar
           value={filters.search || ''}
           onChange={handleSearchChange}
-          placeholder="Search teams and lawyers..."
+          placeholder="Search teams, lawyers and clients..."
           className="w-full md:w-72"
           filters={{
             practiceArea: filters.practiceArea || '',
@@ -262,30 +305,15 @@ export function MyFirmContent({
         </div>
 
         <TabsContent value="lawyers" className="mt-5 space-y-6">
-          {/* Create Team and Add Lawyer Cards - Side by side at the top */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Create Team Card */}
-            <div 
-              className="border-2 border-dashed border-muted rounded-lg flex flex-col items-center justify-center p-4 h-[160px] cursor-pointer hover:border-primary/50 hover:bg-muted/5 transition-all"
+          {/* Action buttons */}
+          <div className="flex flex-col md:flex-row gap-3 justify-end">
+            <Button 
               onClick={() => setIsCreateTeamOpen(true)}
+              className="flex items-center gap-2"
             >
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mb-2">
-                <Users className="h-5 w-5 text-primary" />
-              </div>
-              <h3 className="text-base font-medium mb-1">Create New Team</h3>
-              <p className="text-muted-foreground text-center text-xs">Add a new team to organize your lawyers</p>
-            </div>
-            
-            {/* Add Lawyer Card */}
-            <div 
-              className="border-2 border-dashed border-muted rounded-lg flex flex-col items-center justify-center p-4 h-[160px] cursor-pointer hover:border-primary/50 hover:bg-muted/5 transition-all"
-            >
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mb-2">
-                <Briefcase className="h-5 w-5 text-primary" />
-              </div>
-              <h3 className="text-base font-medium mb-1">Add New Lawyer</h3>
-              <p className="text-muted-foreground text-center text-xs">Invite a lawyer to join your firm</p>
-            </div>
+              <PlusCircle className="h-4 w-4" />
+              Create New Team
+            </Button>
           </div>
 
           {/* Teams Section */}
@@ -298,21 +326,43 @@ export function MyFirmContent({
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {/* Team Cards */}
-                {isLoadingTeams ? (
-                  <SkeletonCard type="team" count={5} />
-                ) : (
-                  teams.map((team) => (
-                    <TeamCard
-                      key={team.id}
-                      team={team}
-                      onEdit={handleTeamEdit}
-                      onDelete={handleTeamDelete}
-                    />
-                  ))
-                )}
-              </div>
+              {teamsError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    There was an error loading teams. Please try again.
+                  </AlertDescription>
+                </Alert>
+              ) : teams.length === 0 && !isLoadingTeams ? (
+                <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <Users className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
+                  <h3 className="text-lg font-medium mb-1">No Teams Found</h3>
+                  <p className="text-muted-foreground">
+                    Create your first team to organize your lawyers
+                  </p>
+                  <Button 
+                    onClick={() => setIsCreateTeamOpen(true)}
+                    className="mt-4"
+                    variant="outline"
+                  >
+                    Create Team
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {isLoadingTeams ? (
+                    <SkeletonCard type="team" count={4} />
+                  ) : (
+                    teams.map((team: any) => (
+                      <TeamCard
+                        key={team.id}
+                        team={team}
+                        onEdit={handleTeamEdit}
+                        onDelete={handleTeamDelete}
+                      />
+                    ))
+                  )}
+                </div>
+              )}
             </section>
           </ErrorBoundary>
 
@@ -324,23 +374,48 @@ export function MyFirmContent({
                   <Briefcase className="h-4 w-4 text-primary" />
                   <h2 className="font-bold text-base">Lawyers</h2>
                 </div>
+                <Button variant="outline" size="sm">
+                  <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+                  Add Lawyer
+                </Button>
               </div>
               
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {/* Lawyer Cards */}
-                {isLoadingLawyers ? (
-                  <SkeletonCard type="lawyer" count={5} />
-                ) : (
-                  lawyers.map((lawyer) => (
-                    <LawyerCard
-                      key={lawyer.id}
-                      lawyer={lawyer}
-                      onEdit={handleLawyerEdit}
-                      onDelete={handleLawyerDelete}
-                    />
-                  ))
-                )}
-              </div>
+              {lawyersError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    There was an error loading lawyers. Please try again.
+                  </AlertDescription>
+                </Alert>
+              ) : lawyers.length === 0 && !isLoadingLawyers ? (
+                <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <Briefcase className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
+                  <h3 className="text-lg font-medium mb-1">No Lawyers Found</h3>
+                  <p className="text-muted-foreground">
+                    Add lawyers to your firm to get started
+                  </p>
+                  <Button 
+                    className="mt-4"
+                    variant="outline"
+                  >
+                    Add Lawyer
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {isLoadingLawyers ? (
+                    <SkeletonCard type="lawyer" count={4} />
+                  ) : (
+                    lawyers.map((lawyer) => (
+                      <LawyerCard
+                        key={lawyer.id}
+                        lawyer={lawyer}
+                        onEdit={handleLawyerEdit}
+                        onDelete={handleLawyerDelete}
+                      />
+                    ))
+                  )}
+                </div>
+              )}
             </section>
           </ErrorBoundary>
         </TabsContent>
@@ -359,9 +434,16 @@ export function MyFirmContent({
         </TabsContent>
       </Tabs>
 
+      {/* Team creation dialog */}
       <CreateTeamDialog
         open={isCreateTeamOpen}
-        onOpenChange={setIsCreateTeamOpen}
+        onOpenChange={(open) => {
+          setIsCreateTeamOpen(open);
+          // If dialog is closed and teams were updated, refetch
+          if (!open) {
+            refetchTeams();
+          }
+        }}
         availableLawyers={lawyers || []}
       />
     </div>

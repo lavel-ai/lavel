@@ -1,0 +1,621 @@
+---
+title: 'Caching Strategy'
+description: 'Multi-level caching approach for performance optimization'
+---
+
+# Caching Strategy
+
+Lavel AI implements a comprehensive multi-level caching strategy to optimize performance, reduce database load, and enhance user experience across the platform.
+
+## Architecture Overview
+
+<Frame>
+  <img src="/images/architecture/caching-architecture.png" alt="Caching Architecture" />
+</Frame>
+
+Our caching architecture includes:
+
+1. **Client-side Cache**: React Query/SWR for frontend data caching
+2. **Server Components Cache**: Next.js Server Component caching
+3. **API Cache**: Response caching for frequently accessed endpoints
+4. **Database Cache**: Query result caching and connection pooling
+5. **CDN Cache**: Edge caching for static assets and pages
+6. **Distributed Cache**: Redis for cross-instance data sharing
+
+## Core Components
+
+### Client-side Caching with React Query
+
+React Query provides a powerful caching layer for client-side data:
+
+```typescript
+// packages/state/query-client.ts
+import { QueryClient, QueryCache } from '@tanstack/react-query';
+import { captureError } from '@repo/observability/error';
+
+export const createQueryClient = () => {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000, // 1 minute
+        cacheTime: 5 * 60 * 1000, // 5 minutes
+        retry: 1,
+        refetchOnWindowFocus: process.env.NODE_ENV === 'production',
+        refetchOnMount: true,
+      },
+    },
+    queryCache: new QueryCache({
+      onError: (error, query) => {
+        // Only report errors that aren't network-related
+        if (!(error instanceof Error) || !error.message.includes('Network')) {
+          captureError(error, {
+            type: 'query_error',
+            queryKey: query.queryKey
+          });
+        }
+      },
+    }),
+  });
+};
+```
+
+### Tenant-aware Caching
+
+Query keys incorporate tenant information to maintain proper data isolation:
+
+```typescript
+// hooks/useCases.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTenant } from '@repo/multi-tenancy/hooks';
+import { fetchCases, createCase } from '../services/case-service';
+
+export function useCases(filters = {}) {
+  const { tenant } = useTenant();
+  const queryClient = useQueryClient();
+  
+  // Create a tenant-specific query key
+  const queryKey = ['cases', tenant.id, filters];
+  
+  const query = useQuery({
+    queryKey,
+    queryFn: () => fetchCases(tenant.id, filters),
+    enabled: !!tenant.id,
+  });
+  
+  const mutation = useMutation({
+    mutationFn: (newCase) => createCase(tenant.id, newCase),
+    onSuccess: () => {
+      // Invalidate the cases query to refresh the data
+      queryClient.invalidateQueries({ queryKey: ['cases', tenant.id] });
+    },
+  });
+  
+  return {
+    ...query,
+    createCase: mutation.mutate,
+  };
+}
+```
+
+### Server-side Caching
+
+Next.js provides robust server-side caching mechanisms:
+
+#### Static Generation with ISR
+
+```typescript
+// app/(authenticated)/[tenant]/documents/page.tsx
+export async function generateStaticParams() {
+  // Pre-generate pages for top tenants
+  const topTenants = await getTopTenants();
+  
+  return topTenants.map(tenant => ({
+    tenant: tenant.slug
+  }));
+}
+
+// Revalidate every hour
+export const revalidate = 3600;
+```
+
+#### Dynamic API Route Caching
+
+```typescript
+// app/api/[tenant]/documents/route.ts
+import { NextResponse } from 'next/server';
+import { getDocuments } from '@repo/database';
+
+export async function GET(
+  request: Request,
+  { params }: { params: { tenant: string } }
+) {
+  const { searchParams } = new URL(request.url);
+  const cacheKey = `documents:${params.tenant}:${searchParams.toString()}`;
+  
+  // Check Redis cache first
+  const cachedData = await redis.get(cacheKey);
+  if (cachedData) {
+    return NextResponse.json(JSON.parse(cachedData), {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'X-Cache': 'HIT'
+      }
+    });
+  }
+  
+  // If not in cache, fetch from database
+  const documents = await getDocuments(params.tenant, Object.fromEntries(searchParams));
+  
+  // Store in Redis with expiration
+  await redis.set(cacheKey, JSON.stringify(documents), 'EX', 300);
+  
+  return NextResponse.json(documents, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      'X-Cache': 'MISS'
+    }
+  });
+}
+```
+
+### Database Query Caching
+
+Prisma Client with connection pooling and query caching:
+
+```typescript
+// packages/database/prisma-client.ts
+import { PrismaClient } from '@prisma/client';
+import { createPrismaRedisCache } from 'prisma-redis-middleware';
+import Redis from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
+
+// Configure Redis cache for Prisma
+const cacheMiddleware = createPrismaRedisCache({
+  storage: {
+    type: 'redis',
+    options: {
+      client: redis,
+      ttl: 60, // Cache for 60 seconds
+      invalidation: {
+        referentialIntegrity: true,
+      },
+    },
+  },
+  cacheTime: 60, // seconds
+  excludeMethods: ['count', 'groupBy'],
+});
+
+// Create singleton Prisma client
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
+
+export const prisma = globalForPrisma.prisma || new PrismaClient({
+  log: process.env.NODE_ENV === 'development' 
+    ? ['query', 'error', 'warn'] 
+    : ['error'],
+});
+
+// Add caching middleware
+prisma.$use(async (params, next) => {
+  // Skip caching for write operations
+  if (params.action !== 'findUnique' && 
+      params.action !== 'findMany' && 
+      params.action !== 'findFirst') {
+    return next(params);
+  }
+  
+  // Apply cache middleware for read operations
+  return cacheMiddleware(params, next);
+});
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+```
+
+### Edge Caching with CDN
+
+Configuration for Vercel Edge Network:
+
+```typescript
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    serverComponents: true,
+  },
+  images: {
+    domains: ['assets.lavel.ai'],
+  },
+  async headers() {
+    return [
+      {
+        // Cache static assets longer
+        source: '/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        // Cache fonts
+        source: '/fonts/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        // Cache images
+        source: '/images/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+    ];
+  },
+};
+
+module.exports = nextConfig;
+```
+
+### Redis Cache Service
+
+Centralized cache service for application-level caching:
+
+```typescript
+// packages/cache/redis-cache.ts
+import Redis from 'ioredis';
+import { serialize, deserialize } from 'superjson';
+
+// Initialize Redis client
+const redis = new Redis(process.env.REDIS_URL);
+
+export class CacheService {
+  /**
+   * Get a value from cache
+   */
+  static async get<T>(key: string): Promise<T | null> {
+    const value = await redis.get(key);
+    if (!value) return null;
+    return deserialize(JSON.parse(value));
+  }
+
+  /**
+   * Set a value in cache with TTL
+   */
+  static async set<T>(
+    key: string, 
+    value: T, 
+    ttlInSeconds = 300
+  ): Promise<void> {
+    const serialized = JSON.stringify(serialize(value));
+    await redis.set(key, serialized, 'EX', ttlInSeconds);
+  }
+
+  /**
+   * Delete a key from cache
+   */
+  static async delete(key: string): Promise<void> {
+    await redis.del(key);
+  }
+
+  /**
+   * Delete multiple keys by pattern
+   */
+  static async deleteByPattern(pattern: string): Promise<void> {
+    const keys = await redis.keys(pattern);
+    if (keys.length) {
+      await redis.del(keys);
+    }
+  }
+
+  /**
+   * Get or set cache with callback
+   */
+  static async getOrSet<T>(
+    key: string,
+    callback: () => Promise<T>,
+    ttlInSeconds = 300
+  ): Promise<T> {
+    const cached = await CacheService.get<T>(key);
+    if (cached !== null) return cached;
+
+    const fresh = await callback();
+    await CacheService.set(key, fresh, ttlInSeconds);
+    return fresh;
+  }
+}
+```
+
+## Cache Invalidation Strategies
+
+### Time-based Invalidation
+
+All cached items have a TTL (Time To Live) appropriate to the data type:
+
+| Data Type | TTL | Rationale |
+|-----------|-----|-----------|
+| User Profile | 15 minutes | Low change frequency, medium importance |
+| Document List | 1 minute | Medium change frequency, high importance |
+| Case Details | 30 seconds | High change frequency, critical importance |
+| Static Data | 24 hours | Very low change frequency |
+| UI Components | 1 hour | Low change frequency |
+
+### Event-based Invalidation
+
+Mutation operations trigger appropriate cache invalidations:
+
+```typescript
+// Example: invalidating related caches after a case update
+export const updateCase = async (tenantId: string, caseId: string, data: any) => {
+  // Update case in database
+  const updatedCase = await prisma.case.update({
+    where: { id: caseId },
+    data
+  });
+  
+  // Invalidate specific caches
+  await CacheService.delete(`case:${tenantId}:${caseId}`);
+  await CacheService.deleteByPattern(`cases:${tenantId}:*`);
+  
+  // If case documents were updated, invalidate document caches
+  if (data.documents) {
+    await CacheService.deleteByPattern(`documents:${tenantId}:*`);
+  }
+  
+  return updatedCase;
+};
+```
+
+### Selective Cache Purging
+
+Admin tools allow manual cache invalidation when needed:
+
+```typescript
+// app/(authenticated)/[tenant]/admin/cache/actions.ts
+'use server'
+
+import { CacheService } from '@repo/cache/redis-cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
+
+export async function purgeCache(
+  formData: FormData
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const cacheType = formData.get('cacheType') as string;
+    const tenantId = formData.get('tenantId') as string;
+    
+    switch (cacheType) {
+      case 'all':
+        await CacheService.deleteByPattern(`${tenantId}:*`);
+        revalidatePath(`/${tenantId}`);
+        break;
+      case 'cases':
+        await CacheService.deleteByPattern(`cases:${tenantId}:*`);
+        revalidateTag(`${tenantId}-cases`);
+        break;
+      case 'documents':
+        await CacheService.deleteByPattern(`documents:${tenantId}:*`);
+        revalidateTag(`${tenantId}-documents`);
+        break;
+      // Other cache types...
+    }
+    
+    return { 
+      success: true, 
+      message: `Successfully purged ${cacheType} cache for ${tenantId}` 
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      message: `Failed to purge cache: ${error.message}` 
+    };
+  }
+}
+```
+
+## Multi-tenant Cache Isolation
+
+Each tenant's data is isolated in cache using tenant prefixes:
+
+```typescript
+// packages/multi-tenancy/cache-helpers.ts
+import { CacheService } from '@repo/cache/redis-cache';
+
+/**
+ * Get a tenant-specific cache key
+ */
+export function getTenantCacheKey(
+  tenantId: string, 
+  resourceType: string, 
+  identifier?: string
+): string {
+  return [
+    tenantId,
+    resourceType,
+    identifier
+  ].filter(Boolean).join(':');
+}
+
+/**
+ * Get cached tenant data or fetch and cache it
+ */
+export async function getTenantCachedData<T>(
+  tenantId: string,
+  resourceType: string,
+  identifier: string | undefined,
+  fetchFn: () => Promise<T>,
+  ttlInSeconds = 300
+): Promise<T> {
+  const cacheKey = getTenantCacheKey(tenantId, resourceType, identifier);
+  
+  return CacheService.getOrSet(
+    cacheKey,
+    fetchFn,
+    ttlInSeconds
+  );
+}
+```
+
+## Monitoring Cache Performance
+
+We monitor cache performance metrics:
+
+1. **Hit Rate**: Percentage of successful cache lookups
+2. **Miss Rate**: Percentage of cache lookups that result in a miss
+3. **Latency**: Time to retrieve data from cache vs. uncached data
+4. **Eviction Rate**: Rate at which items are evicted from cache
+5. **Size**: Current size of the cache
+
+```typescript
+// packages/observability/cache-metrics.ts
+import { metrics } from './metrics';
+
+export function trackCacheOperation(
+  operation: 'hit' | 'miss' | 'set' | 'eviction',
+  cacheType: 'redis' | 'memory' | 'react-query',
+  duration?: number
+) {
+  // Increment counter for operation type
+  metrics.counter(`cache.${operation}`, 1, {
+    cache_type: cacheType
+  });
+  
+  // If duration is provided, track it
+  if (duration !== undefined) {
+    metrics.histogram(`cache.duration`, duration, {
+      cache_type: cacheType,
+      operation
+    });
+  }
+}
+
+// Usage in the cache service
+async get<T>(key: string): Promise<T | null> {
+  const startTime = performance.now();
+  const value = await redis.get(key);
+  const duration = performance.now() - startTime;
+  
+  if (!value) {
+    trackCacheOperation('miss', 'redis', duration);
+    return null;
+  }
+  
+  trackCacheOperation('hit', 'redis', duration);
+  return deserialize(JSON.parse(value));
+}
+```
+
+## Best Practices
+
+1. **Cache Hierarchy**: Use the most appropriate caching layer for each data type
+2. **Tenant Isolation**: Ensure tenant data is isolated in cache
+3. **TTL Strategy**: Set appropriate expiration times based on data volatility
+4. **Cache Keys**: Use consistent, descriptive cache key patterns
+5. **Stale-While-Revalidate**: Serve stale data while fetching fresh data in background
+6. **Cache Warming**: Pre-populate caches for critical data during deployment
+7. **Monitoring**: Track cache performance metrics and set alerts for issues
+8. **Graceful Degradation**: Handle cache failures by falling back to database
+
+## Common Caching Patterns
+
+### Read-Through Cache
+
+```typescript
+async function getCase(tenantId: string, caseId: string) {
+  const cacheKey = `case:${tenantId}:${caseId}`;
+  
+  // Try to get from cache first
+  const cachedCase = await CacheService.get(cacheKey);
+  if (cachedCase) return cachedCase;
+  
+  // If not in cache, get from database
+  const dbCase = await prisma.case.findUnique({
+    where: { id: caseId },
+    include: { /* relations */ }
+  });
+  
+  // Store in cache for future requests
+  if (dbCase) {
+    await CacheService.set(cacheKey, dbCase, 60); // 1 minute TTL
+  }
+  
+  return dbCase;
+}
+```
+
+### Write-Through Cache
+
+```typescript
+async function updateDocument(
+  tenantId: string, 
+  documentId: string, 
+  data: any
+) {
+  // Update in database
+  const updatedDoc = await prisma.document.update({
+    where: { id: documentId },
+    data
+  });
+  
+  // Update cache with new data
+  const cacheKey = `document:${tenantId}:${documentId}`;
+  await CacheService.set(cacheKey, updatedDoc, 60);
+  
+  // Invalidate list caches
+  await CacheService.deleteByPattern(`documents:${tenantId}:*`);
+  
+  return updatedDoc;
+}
+```
+```
+
+## Integrating Caching Documentation with Mint.json
+
+Let me update the `mint.json` navigation to include the caching strategy documentation:
+
+```json
+"navigation": [
+  // ... existing groups ...
+  {
+    "group": "Architecture",
+    "pages": [
+      "architecture/overview",
+      "architecture/state-management",
+      "architecture/service-layer",
+      "architecture/normalization",
+      "architecture/database",
+      "architecture/caching",
+      "architecture/observability",
+      "architecture/error-tracking",
+      "architecture/feature-flags",
+      "architecture/analytics",
+      "architecture/multi-tenancy"
+    ]
+  },
+  // ... other groups ...
+]
+```
+
+## Analysis of the Caching Strategy
+
+The documented caching strategy provides a comprehensive multi-level approach that addresses several key aspects of performance optimization in the Lavel AI platform:
+
+**Strengths:**
+1. **Layered Approach**: By implementing caching at multiple levels (client, server, API, database, CDN), we ensure that data is served from the fastest possible source for each use case.
+2. **Tenant Isolation**: The strategy properly isolates tenant data in caches to maintain security and data integrity in the multi-tenant environment.
+3. **Intelligent Invalidation**: Using both time-based and event-based invalidation ensures that cache freshness is maintained appropriately based on data volatility.
+4. **Monitoring Integration**: Cache performance metrics are tied into the broader observability system for proactive detection of issues.
+
+**Potential Improvements:**
+1. **Cache Stampede Protection**: Adding mechanisms to prevent multiple concurrent requests for the same uncached data when a cache entry expires.
+2. **Distributed Cache Coordination**: Enhancing the system with broadcast invalidation for multi-instance deployments to ensure consistency across servers.
+3. **Cache Preloading**: Implementing more sophisticated cache warming strategies for critical tenant data upon new deployments.
+
+Would you like me to elaborate on any specific aspect of the caching strategy or document any other components of your architecture?

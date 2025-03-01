@@ -1,0 +1,261 @@
+---
+title: 'Analytics'
+description: 'User behavior tracking and product analytics'
+---
+
+# Analytics Architecture
+
+The Analytics Architecture enables tracking user behavior, measuring feature adoption, and gathering insights to improve the Lavel AI platform.
+
+## Architecture Overview
+
+<Frame>
+  <img src="/images/architecture/analytics-architecture.png" alt="Analytics Architecture" />
+</Frame>
+
+The analytics system is built around:
+
+1. **Event Collection**: Capturing user actions and system events
+2. **Data Processing**: Transforming and enriching event data
+3. **Data Storage**: Storing events for analysis
+4. **Visualization**: Dashboards and reports
+5. **Integration**: Connection to PostHog and other analytics tools
+
+## Core Components
+
+### Event Tracking
+
+The analytics system provides a consistent API for tracking events:
+
+```typescript
+// packages/analytics/tracker.ts
+import posthog from 'posthog-js';
+
+// Initialize PostHog
+export function initAnalytics(apiKey: string, options: any = {}) {
+  if (typeof window !== 'undefined') {
+    posthog.init(apiKey, {
+      api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com',
+      capture_pageview: false, // We'll handle this manually
+      ...options
+    });
+  }
+}
+
+// Track a specific event
+export function trackEvent(
+  eventName: string, 
+  properties: Record<string, any> = {},
+  options: { sendImmediately?: boolean } = {}
+) {
+  if (typeof window !== 'undefined') {
+    posthog.capture(eventName, {
+      timestamp: new Date().toISOString(),
+      ...properties
+    }, options);
+  }
+}
+
+// Identify a user
+export function identifyUser(
+  userId: string, 
+  userProperties: Record<string, any> = {}
+) {
+  if (typeof window !== 'undefined') {
+    posthog.identify(userId, userProperties);
+  }
+}
+
+// Track page views
+export function trackPageView(url: string, properties: Record<string, any> = {}) {
+  trackEvent('$pageview', {
+    $current_url: url,
+    ...properties
+  });
+}
+```
+
+### React Integration
+
+A React provider sets up the analytics context for the application:
+
+```typescript
+// packages/analytics/provider.tsx
+import { createContext, useContext, useEffect } from 'react';
+import { initAnalytics, identifyUser } from './tracker';
+import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/router';
+
+const AnalyticsContext = createContext(null);
+
+export function AnalyticsProvider({ 
+  children,
+  apiKey,
+  options = {}
+}) {
+  const { userId, user } = useAuth();
+  const router = useRouter();
+  
+  // Initialize analytics
+  useEffect(() => {
+    initAnalytics(apiKey, options);
+  }, [apiKey]);
+  
+  // Identify user when authenticated
+  useEffect(() => {
+    if (userId && user) {
+      identifyUser(userId, {
+        email: user.primaryEmailAddress?.emailAddress,
+        name: `${user.firstName} ${user.lastName}`,
+        tenant: router.query.tenant || 'unknown'
+      });
+    }
+  }, [userId, user, router.query.tenant]);
+  
+  // Track page views
+  useEffect(() => {
+    const handleRouteChange = (url) => {
+      trackPageView(url);
+    };
+    
+    router.events.on('routeChangeComplete', handleRouteChange);
+    
+    return () => {
+      router.events.off('routeChangeComplete', handleRouteChange);
+    };
+  }, [router.events]);
+  
+  return (
+    <AnalyticsContext.Provider value={{ userId }}>
+      {children}
+    </AnalyticsContext.Provider>
+  );
+}
+```
+
+### Standard Event Tracking
+
+To ensure consistent tracking, we define standard events:
+
+```typescript
+// packages/analytics/events.ts
+import { trackEvent } from './tracker';
+
+// UI interaction events
+export const trackButtonClick = (buttonName: string, properties = {}) => {
+  trackEvent('button_clicked', { button_name: buttonName, ...properties });
+};
+
+export const trackFormSubmission = (formName: string, properties = {}) => {
+  trackEvent('form_submitted', { form_name: formName, ...properties });
+};
+
+// Feature usage events
+export const trackFeatureUsage = (featureName: string, properties = {}) => {
+  trackEvent('feature_used', { feature_name: featureName, ...properties });
+};
+
+// Business events
+export const trackCaseCreated = (caseId: string, properties = {}) => {
+  trackEvent('case_created', { case_id: caseId, ...properties });
+};
+
+export const trackDocumentUploaded = (documentId: string, properties = {}) => {
+  trackEvent('document_uploaded', { document_id: documentId, ...properties });
+};
+```
+
+### Hook for Component Usage
+
+A custom hook makes it easy to track component-level events:
+
+```typescript
+// packages/analytics/use-analytics.ts
+import { useCallback } from 'react';
+import { trackEvent, trackButtonClick, trackFormSubmission } from './events';
+
+export function useAnalytics(componentName: string) {
+  const trackComponentEvent = useCallback((
+    action: string, 
+    properties = {}
+  ) => {
+    trackEvent(`${componentName}_${action}`, properties);
+  }, [componentName]);
+  
+  const trackComponentButtonClick = useCallback((
+    buttonName: string, 
+    properties = {}
+  ) => {
+    trackButtonClick(buttonName, { 
+      component: componentName,
+      ...properties 
+    });
+  }, [componentName]);
+  
+  const trackComponentFormSubmission = useCallback((
+    formName: string,
+    properties = {}
+  ) => {
+    trackFormSubmission(formName, {
+      component: componentName,
+      ...properties
+    });
+  }, [componentName]);
+  
+  return {
+    trackComponentEvent,
+    trackComponentButtonClick,
+    trackComponentFormSubmission
+  };
+}
+
+// Usage in a component
+function CaseForm() {
+  const { trackComponentFormSubmission } = useAnalytics('CaseForm');
+  
+  const handleSubmit = async (data) => {
+    // Process form submission
+    await createCase(data);
+    
+    // Track the event
+    trackComponentFormSubmission('case_creation', {
+      case_type: data.type,
+      has_documents: data.documents.length > 0
+    });
+  };
+  
+  // Component JSX...
+}
+```
+
+## Analytics Dashboards
+
+<Frame>
+  <img src="/images/architecture/analytics-dashboard.png" alt="Analytics Dashboard" />
+</Frame>
+
+The analytics data feeds into PostHog dashboards that provide insights on:
+
+1. **User Engagement**: Active users, session duration, feature usage
+2. **Workflow Metrics**: Case creation, document uploads, client additions
+3. **Performance**: Page load times, API response times
+4. **Conversion Funnels**: Key workflow completion rates
+5. **Retention**: User and tenant retention over time
+
+## Data Collection Guidelines
+
+To ensure privacy and compliance:
+
+1. **Anonymize Sensitive Data**: Never track PII or case-specific details
+2. **Respect User Privacy**: Honor do-not-track settings
+3. **Limit Event Properties**: Only track necessary properties
+4. **Document Tracking**: Maintain a catalog of tracked events
+5. **GDPR Compliance**: Implement data deletion capabilities
+
+## Best Practices
+
+1. **Consistent Naming**: Use snake_case for event names and properties
+2. **Standard Events**: Use pre-defined event trackers when available
+3. **Contextual Properties**: Include component, page, and feature context
+4. **Avoid Over-tracking**: Track meaningful events, not every interaction
+5. **Test Tracking**: Verify events appear in PostHog during development

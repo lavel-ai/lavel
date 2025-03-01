@@ -1,0 +1,46 @@
+---
+title: 'Component Overview'
+description: 'Overview of the component architecture'
+---
+
+# Component Architecture
+
+Lavel AI follows a component-based architecture organized by feature. Each feature contains:
+
+features/
+feature-name/
+components/ # UI components
+hooks/ # Custom React hooks
+context/ # Context providers
+utils/ # Helper functions
+types/ # TypeScript types
+
+
+## Component Types
+
+We distinguish between several types of components:
+
+### UI Components
+
+Presentational components focused on rendering the user interface.
+
+### Container Components
+
+Components that connect to state and services, then pass data to UI components.
+
+### Feature Components
+
+Larger components that compose multiple UI components to create a complete feature.
+
+### Page Components
+
+Top-level components that represent entire pages in the application.
+
+## Documentation Structure
+
+In this section:
+
+- [UI Components](/components/ui-components) - Reusable UI building blocks
+- [Hooks](/components/hooks) - Custom React hooks for data and behavior
+- [Services](/components/services) - API abstraction layer
+- [Stores](/components/stores) - State management stores

@@ -1,0 +1,296 @@
+---
+title: 'Error Tracking'
+description: 'Automated error detection and reporting'
+---
+
+# Error Tracking Architecture
+
+The Error Tracking Architecture provides a system for automatically capturing, reporting, and analyzing errors that occur in the Lavel AI platform.
+
+## Architecture Overview
+
+<Frame>
+  <img src="/images/architecture/error-tracking-architecture.png" alt="Error Tracking Architecture" />
+</Frame>
+
+The error tracking system consists of:
+
+1. **Error Capture**: Client and server-side error detection
+2. **Error Enrichment**: Adding context and metadata to errors
+3. **Error Reporting**: Sending errors to Sentry
+4. **Error Analysis**: Tools for investigating and resolving errors
+5. **Alert System**: Notifications for critical errors
+
+## Core Components
+
+### Sentry Integration
+
+We use Sentry for centralized error tracking:
+
+```typescript
+// packages/observability/sentry.ts
+import * as Sentry from '@sentry/nextjs';
+
+export function initSentry() {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    tracesSampleRate: 0.1, // Sample 10% of transactions
+    integrations: [
+      new Sentry.BrowserTracing({
+        // Transaction integration options
+      })
+    ],
+    beforeSend(event) {
+      // Sanitize sensitive data
+      if (event.request?.headers) {
+        delete event.request.headers['authorization'];
+      }
+      return event;
+    }
+  });
+}
+```
+
+### Error Boundary Component
+
+A React error boundary captures frontend errors:
+
+```tsx
+// packages/observability/error-boundary.tsx
+import React from 'react';
+import * as Sentry from '@sentry/nextjs';
+
+interface ErrorBoundaryProps {
+  fallback?: React.ReactNode;
+  component?: string;
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    Sentry.captureException(error, {
+      extra: {
+        componentStack: errorInfo.componentStack,
+        component: this.props.component
+      }
+    });
+    
+    console.error('Component error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="error-boundary-fallback">
+          <h2>Something went wrong</h2>
+          <p>
+            The application encountered an error. Please try again or contact support
+            if the problem persists.
+          </p>
+          <button 
+            onClick={() => this.setState({ hasError: false })}
+            className="btn btn-primary"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+### Error Context Enrichment
+
+We add context to errors to make them more useful:
+
+```typescript
+// packages/observability/error.ts
+import * as Sentry from '@sentry/nextjs';
+
+export function setErrorContext(key: string, value: any) {
+  Sentry.setContext(key, value);
+}
+
+export function setUserContext(user: {
+  id: string;
+  email?: string;
+  tenant?: string;
+}) {
+  Sentry.setUser({
+    id: user.id,
+    email: user.email,
+    tenant: user.tenant
+  });
+}
+
+export function captureError(
+  error: Error, 
+  context: Record<string, any> = {}
+) {
+  Sentry.captureException(error, {
+    extra: context
+  });
+}
+
+// Error wrapper function
+export function withErrorTracking<T>(
+  fn: (...args: any[]) => Promise<T>,
+  context: Record<string, any> = {}
+): (...args: any[]) => Promise<T> {
+  return async (...args) => {
+    try {
+      return await fn(...args);
+    } catch (error) {
+      captureError(error, {
+        ...context,
+        args: JSON.stringify(args)
+      });
+      throw error;
+    }
+  };
+}
+```
+
+### API Error Handling
+
+We've standardized API error handling:
+
+```typescript
+// packages/observability/api-error-handler.ts
+import { captureError } from './error';
+import { NextResponse } from 'next/server';
+
+export function handleApiError(
+  error: any, 
+  context: Record<string, any> = {}
+) {
+  // Capture the error with context
+  captureError(error, {
+    type: 'api_error',
+    ...context
+  });
+  
+  // Determine HTTP status code
+  let statusCode = 500;
+  let message = 'Internal server error';
+  
+  if (error.code === 'P2025') { // Prisma not found error
+    statusCode = 404;
+    message = 'Resource not found';
+  } else if (error.name === 'ValidationError') {
+    statusCode = 400;
+    message = error.message;
+  } else if (error.code === 'P2002') { // Prisma unique constraint error
+    statusCode = 409;
+    message = 'Resource already exists';
+  }
+  
+  // Return standardized error response
+  return NextResponse.json(
+    {
+      error: {
+        message,
+        code: error.code,
+        type: error.name,
+        traceId: Sentry.lastEventId()
+      }
+    },
+    { status: statusCode }
+  );
+}
+```
+
+### Error Monitoring Dashboard
+
+<Frame>
+  <img src="/images/architecture/sentry-dashboard.png" alt="Sentry Error Dashboard" />
+</Frame>
+
+The Sentry dashboard provides:
+
+1. **Error Feed**: Real-time stream of errors
+2. **Error Details**: Stack traces, breadcrumbs, and context
+3. **Error Trends**: Patterns in error occurrence
+4. **Issue Assignment**: Workflow for assigning and resolving errors
+5. **Release Tracking**: Errors by deployment
+
+## Alert Configuration
+
+Critical errors trigger alerts via:
+
+1. **Email notifications**: Sent to the engineering team
+2. **Slack integration**: Posted to the #errors channel
+3. **PagerDuty**: For high-priority production errors
+
+Alert rules include:
+
+```json
+{
+  "name": "Critical API Errors",
+  "description": "Alert on any 500 errors in production API endpoints",
+  "actionMatch": "all",
+  "conditions": [
+    {
+      "id": "sentry.rules.conditions.first_seen_event.FirstSeenEventCondition"
+    },
+    {
+      "id": "sentry.rules.conditions.event_attribute.EventAttributeCondition",
+      "attribute": "level",
+      "match": "eq",
+      "value": "error"
+    },
+    {
+      "id": "sentry.rules.conditions.event_attribute.EventAttributeCondition",
+      "attribute": "environment",
+      "match": "eq",
+      "value": "production"
+    }
+  ],
+  "actions": [
+    {
+      "id": "sentry.rules.actions.notify_event.NotifyEventAction"
+    },
+    {
+      "id": "sentry.rules.actions.notify_event_service.NotifyEventServiceAction",
+      "service": "slack",
+      "channel": "#errors"
+    }
+  ],
+  "frequency": 30
+}
+```
+
+## Integration with Observability
+
+Error tracking integrates with the broader observability system:
+
+1. **Logging Integration**: Errors capture related log entries
+2. **Performance Monitoring**: Errors are correlated with performance issues
+3. **Status Page**: Major errors affect system status
+
+## Best Practices
+
+1. **Meaningful Error Messages**: Use clear, actionable error messages
+2. **Proper Context**: Include tenant, user, and action context
+3. **Error Categories**: Tag errors by type (API, rendering, database, etc.)
+4. **Error Boundaries**: Use Error Boundaries around critical components
+5. **Error Prioritization**: Focus on high-impact, frequently occurring errors
+6. **Error Resolution**: Document fix procedures for common errors

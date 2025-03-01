@@ -118,12 +118,11 @@ export class TeamQueries {
       throw error;
     }
   }
-}
 
-export async function queryTeams(db: TenantDatabase) {
-  const teamsWithMembers = await db.query.teams.findMany({
-    where: isNull(teams.deletedAt),
-    with: {
+  async queryTeams() {
+    const teamsWithMembers = await this.db.query.teams.findMany({
+      where: isNull(teams.deletedAt),
+      with: {
       teamProfiles: {
         where: isNull(teamProfiles.deletedAt),
         with: {
@@ -136,6 +135,9 @@ export async function queryTeams(db: TenantDatabase) {
 
   return teamsWithMembers.map(team => normalizeTeam(team));
 }
+}
+
+
 
 export async function insertTeam(db: TenantDatabase, data: {
   name: string;

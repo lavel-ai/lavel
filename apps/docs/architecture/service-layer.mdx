@@ -1,0 +1,85 @@
+---
+title: 'Service Layer'
+description: 'API abstraction and data handling services'
+---
+
+# Service Layer
+
+The Service Layer provides a clean API for UI components to interact with backend data, handling:
+
+- API requests and responses
+- Error handling and retry logic
+- Data transformations
+- Integration with the normalization pipeline
+
+## Service Structure
+
+Services are organized by domain entity (e.g., cases, clients, lawyers) and follow a consistent pattern:
+
+```tsx
+// services/case-service.ts
+import { getTenantDbClient } from '../utils/tenant-db';
+import { casePipeline } from '@repo/schema/pipeline/case-pipeline';
+import { logger } from '@repo/observability/log';
+
+export const caseService = {
+  // Get cases with pagination and filtering
+  async getCases(params = {}) {
+    logger.info('Fetching cases', { params });
+    
+    const db = getTenantDbClient();
+    // ... implementation details
+    
+    return { data, pagination };
+  },
+  
+  // Create case with normalization
+  async createCase(data, context = {}) {
+    const pipelineResult = await casePipeline.process(data, context);
+    const db = getTenantDbClient();
+    // ... save to database
+    
+    return { id, data: pipelineResult.result };
+  },
+  
+  // Other methods...
+};
+```
+
+## Service Integration with React Query
+
+Services are designed to work seamlessly with React Query:
+
+```tsx
+// hooks/use-cases.ts
+import { useQuery } from '@tanstack/react-query';
+import { caseService } from '../services/case-service';
+
+export function useCases(params = {}) {
+  return useQuery({
+    queryKey: ['cases', params],
+    queryFn: () => caseService.getCases(params),
+  });
+}
+```
+
+## Tenant Isolation
+
+All services access the database through the `getTenantDbClient()` utility, ensuring proper tenant isolation based on the current subdomain.
+
+## Error Handling
+
+Services implement consistent error handling with observability integration:
+
+```tsx
+try {
+  // Implementation
+} catch (error) {
+  logger.error('Error in service method', {
+    error: error.message,
+    method: 'getCases',
+    params
+  });
+  throw error; // Let React Query handle the error
+}
+```

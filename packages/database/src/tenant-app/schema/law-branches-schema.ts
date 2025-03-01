@@ -4,6 +4,8 @@ import { relations } from "drizzle-orm";
 import { courthouses } from "./courthouses-schema";
 import { trialTypes } from "./trial-types-schema";
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { profilePracticeAreas } from "./profile-practice-areas-schema";
+import { teamPracticeAreas } from "./team-practice-areas-schema";
 
 export const lawBranches = pgTable("law_branches", {
 	id: integer("id").primaryKey().generatedByDefaultAsIdentity({ name: "law_branches_id2_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -20,6 +22,8 @@ export const lawBranches = pgTable("law_branches", {
 export const lawBranchesRelations = relations(lawBranches, ({many}) => ({
 	courthouses: many(courthouses),
 	trialTypes: many(trialTypes),
+	profilePracticeAreas: many(profilePracticeAreas),
+	teamPracticeAreas: many(teamPracticeAreas),
 }));
 
 export type LawBranch = typeof lawBranches.$inferSelect;

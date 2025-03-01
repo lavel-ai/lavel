@@ -13,7 +13,7 @@ import type { TeamCardProps } from '../../my-firm/types';
 
 export function TeamCard({ team, onEdit, onDelete }: TeamCardProps) {
   // Find the leader of the team
-  const leader = team.members.find(member => member.isLeadLawyer);
+  const leader = team.members.find((member: any) => member.isLeadLawyer);
   
   return (
     <Card className="overflow-hidden hover:shadow-md transition-all border border-border h-[180px] flex flex-col">
@@ -101,7 +101,7 @@ export function TeamCard({ team, onEdit, onDelete }: TeamCardProps) {
             </div>
             
             <div className="flex -space-x-1 overflow-hidden">
-              {team.members.slice(0, 5).map((member) => (
+              {team.members.slice(0, 5).map((member: any) => (
                 <Avatar key={member.id} className="border-2 border-background h-5 w-5">
                   <AvatarFallback className="bg-muted text-muted-foreground text-[8px]">
                     {member.name.charAt(0)}{member.lastName.charAt(0)}

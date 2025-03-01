@@ -1,0 +1,1540 @@
+---
+title: 'Data Flow Examples'
+description: 'Examples and best practices for data flow implementation'
+---
+
+# Data Flow Examples and Best Practices
+
+This document provides complete examples of data flow implementation and best practices to follow in the Lavel AI platform.
+
+## Complete Example: Case Management
+
+The following example demonstrates the complete data flow for the case management feature, including:
+
+1. Server Components
+2. Server Actions
+3. Database Query Functions
+4. Client Components with React Query
+5. Custom Hooks for Data Access
+
+### 1. Server Component (Cases Page)
+
+```tsx
+// app/(authenticated)/[tenant]/cases/page.tsx
+import { Suspense } from 'react';
+import { getCases } from '../features/cases/actions/get-cases';
+import { CasesList } from '../features/cases/components/cases-list';
+import { NewCaseButton } from '../features/cases/components/new-case-button';
+import { CasesListSkeleton } from '../features/cases/components/skeletons';
+
+export default async function CasesPage({ params }) {
+  // Get initial cases data from server action
+  const response = await getCases({});
+  
+  const initialCases = response.status === 'success' 
+    ? response.data 
+    : [];
+  
+  return (
+    <div className="p-4">
+      <div className="flex justify-between mb-6">
+        <h1 className="text-2xl font-bold">Cases</h1>
+        <NewCaseButton tenant={params.tenant} />
+      </div>
+      
+      <Suspense fallback={<CasesListSkeleton />}>
+        {/* Pass initial data to Client Component */}
+        <CasesList initialCases={initialCases} tenant={params.tenant} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### 2. Server Action (Get Cases)
+
+```tsx
+// app/(authenticated)/features/cases/actions/get-cases.ts
+'use server'
+
+import { auth } from '@repo/auth/server';
+import { redis } from '@repo/cache/redis';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
+import { getCasesQuery } from '@repo/database/queries/cases-queries';
+import { normalizeCase } from '@repo/database/utils/normalize/case';
+import { getTenantIdentifier } from '@/app/utils/tenant-identifier';
+import { captureError } from '@repo/observability/error';
+
+type GetCasesResponse = {
+  status: 'success' | 'error';
+  data?: any[];
+  message?: string;
+}
+
+export async function getCases(filters = {}): Promise<GetCasesResponse> {
+  try {
+    // 1. Authentication check
+    const { userId } = await auth();
+    if (!userId) {
+      return { status: 'error', message: 'Unauthorized' };
+    }
+    
+    // 2. Get tenant identifier
+    const tenantId = await getTenantIdentifier();
+    
+    if (!tenantId) {
+      return { status: 'error', message: 'Invalid tenant' };
+    }
+    
+    // 3. Try cache first
+    const cacheKey = `${tenantId}:cases:list:${JSON.stringify(filters)}`;
+    const cached = await redis.get(cacheKey);
+    
+    if (cached) {
+      return { status: 'success', data: JSON.parse(cached) };
+    }
+    
+    // 4. Get tenant database client
+    const tenantDb = await getTenantDbClientUtil();
+    
+    // 5. Map clerk ID to internal user ID
+    const user = await tenantDb.query.users.findFirst({
+      where: (users, { eq }) => eq(users.clerkId, userId)
+    });
+    
+    if (!user) {
+      return { status: 'error', message: 'User not found' };
+    }
+    
+    // 6. Track the event
+    trackEvent('cases_viewed', {
+      filter_count: Object.keys(filters).length
+    });
+    
+    // 7. Get cases from database
+    const cases = await getCasesQuery(tenantDb, user.id, filters);
+    
+    // 8. Normalize cases for client
+    const normalizedCases = cases.map(normalizeCase);
+    
+    // 9. Cache results
+    await redis.set(cacheKey, JSON.stringify(normalizedCases), 'EX', 60);
+    
+    // 10. Return structured response
+    return { status: 'success', data: normalizedCases };
+  } catch (error) {
+    // 11. Error handling
+    console.error('Error fetching cases:', error);
+    
+    captureError(error, {
+      context: 'getCases',
+      filters
+    });
+    
+    return { status: 'error', message: 'Failed to fetch cases' };
+  }
+}
+```
+
+### 3. Database Query Function
+
+```tsx
+// packages/database/src/tenant-app/queries/cases-queries.ts
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { cases, caseAssignments } from '../schema';
+
+export async function getCasesQuery(
+  db,
+  userId,
+  filters = {}
+) {
+  // Build query based on filters
+  const conditions = [
+    // Cases created by user or assigned to user
+    sql`(${eq(cases.createdBy, userId)} OR EXISTS (
+      SELECT 1 FROM ${caseAssignments}
+      WHERE ${and(
+        eq(caseAssignments.caseId, cases.id),
+        eq(caseAssignments.userId, userId)
+      )}
+    ))`
+  ];
+  
+  // Add status filter if provided
+  if (filters.status) {
+    conditions.push(eq(cases.status, filters.status));
+  }
+  
+  // Execute query
+  return db.select()
+    .from(cases)
+    .where(and(...conditions))
+    .orderBy(desc(cases.createdAt))
+    .limit(50);
+}
+
+export async function insertCaseQuery(
+  db,
+  caseData
+) {
+  const result = await db.insert(cases).values(caseData);
+  const insertedId = result.insertId;
+  
+  // Fetch the inserted case
+  return db.query.cases.findFirst({
+    where: (cases, { eq }) => eq(cases.id, insertedId)
+  });
+}
+```
+
+### 4. Custom Hook for Data Access
+
+```tsx
+// app/(authenticated)/features/cases/hooks/use-cases.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getCases, createCase, updateCase, deleteCase } from '../actions/cases';
+import { useParams } from 'next/navigation';
+import { useToast } from '@repo/design-system/components/ui/toast';
+
+export function useCases(filters = {}) {
+  const params = useParams();
+  const tenant = params.tenant;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
+  // Query for fetching cases
+  const query = useQuery({
+    queryKey: ['cases', tenant, filters],
+    queryFn: async () => {
+      const response = await getCases(filters);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    enabled: !!tenant,
+  });
+  
+  // Mutation for creating cases
+  const createMutation = useMutation({
+    mutationFn: createCase,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['cases', tenant] });
+      
+      toast({
+        title: "Case created",
+        description: `Case "${data.title}" created successfully`
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error creating case",
+        description: error.message
+      });
+    }
+  });
+  
+  // Other mutations...
+  
+  return {
+    // Query properties
+    cases: query.data,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    
+    // Mutations
+    createCase: createMutation.mutate,
+    
+    // Mutation states
+    isCreating: createMutation.isPending,
+  };
+}
+```
+
+### 5. Client Component Using Custom Hook
+
+```tsx
+'use client'
+// app/(authenticated)/features/cases/components/cases-list.tsx
+import { useCases } from '../hooks/use-cases';
+import { useState } from 'react';
+import { CaseFilters } from './case-filters';
+import { CaseCard } from './case-card';
+
+export function CasesList({ initialCases }) {
+  const [filters, setFilters] = useState({});
+  
+  // Use the custom hook
+  const { 
+    cases, 
+    isLoading, 
+    isError, 
+    error 
+  } = useCases(filters);
+  
+  // Filter change handler
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters);
+  };
+  
+  if (isError) {
+    return (
+      <div className="p-4 bg-red-50 text-red-700 rounded">
+        Error loading cases: {error.message}
+      </div>
+    );
+  }
+  
+  const displayCases = cases || initialCases;
+  
+  return (
+    <div>
+      <div className="mb-4">
+        <CaseFilters 
+          filters={filters} 
+          onChange={handleFilterChange}
+        />
+      </div>
+      
+      {isLoading && !initialCases ? (
+        <p>Loading...</p>
+      ) : displayCases?.length === 0 ? (
+        <p>No cases found</p>
+      ) : (
+        <div className="grid gap-4">
+          {displayCases?.map(caseItem => (
+            <CaseCard key={caseItem.id} caseData={caseItem} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### 6. Form Component with Mutation
+
+```tsx
+'use client'
+// app/(authenticated)/features/cases/components/new-case-form.tsx
+import { useCases } from '../hooks/use-cases';
+import { useParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+export function NewCaseForm({ onSuccess }) {
+  const { createCase, isCreating } = useCases();
+  const params = useParams();
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    status: 'draft'
+  });
+  
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    const response = await createCase(formData);
+    
+    if (response.status === 'success') {
+      if (onSuccess) onSuccess();
+      
+      // Navigate to the new case
+      router.push(`/${params.tenant}/cases/${response.data.id}`);
+    }
+  };
+  
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="title" className="block text-sm font-medium">
+          Case Title
+        </label>
+        <input
+          id="title"
+          name="title"
+          value={formData.title}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border p-2"
+          required
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="description" className="block text-sm font-medium">
+          Description
+        </label>
+        <textarea
+          id="description"
+          name="description"
+          value={formData.description}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border p-2"
+          rows={3}
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="status" className="block text-sm font-medium">
+          Status
+        </label>
+        <select
+          id="status"
+          name="status"
+          value={formData.status}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border p-2"
+        >
+          <option value="draft">Draft</option>
+          <option value="active">Active</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      
+      <button
+        type="submit"
+        className="bg-primary text-white px-4 py-2 rounded-md"
+        disabled={isCreating}
+      >
+        {isCreating ? 'Creating...' : 'Create Case'}
+      </button>
+    </form>
+  );
+}
+```
+
+## Example: Single Entity Data Flow
+
+This example demonstrates the data flow for a single entity:
+
+### 1. Server Component (Case Detail Page)
+
+```tsx
+// app/(authenticated)/[tenant]/cases/[id]/page.tsx
+import { Suspense } from 'react';
+import { getCase } from '../../../features/cases/actions/get-case';
+import { CaseDetails } from '../../../features/cases/components/case-details';
+import { CaseDetailsSkeleton } from '../../../features/cases/components/skeletons';
+
+export default async function CaseDetailPage({ params }) {
+  // Get case data from server action
+  const response = await getCase(params.id);
+  
+  // Handle error case
+  if (response.status === 'error') {
+    return (
+      <div className="p-4">
+        <h1 className="text-2xl font-bold text-red-600">Error</h1>
+        <p>{response.message}</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="p-4">
+      <Suspense fallback={<CaseDetailsSkeleton />}>
+        {/* Pass initial data to Client Component */}
+        <CaseDetails initialCase={response.data} id={params.id} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### 2. Server Action (Get Case)
+
+```tsx
+// app/(authenticated)/features/cases/actions/get-case.ts
+'use server'
+
+import { auth } from '@repo/auth/server';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
+import { getCaseQuery } from '@repo/database/queries/cases-queries';
+import { normalizeCase } from '@repo/database/utils/normalize/case';
+import { captureError } from '@repo/observability/error';
+
+export async function getCase(id) {
+  try {
+    // Authentication check
+    const { userId } = await auth();
+    if (!userId) {
+      return { status: 'error', message: 'Unauthorized' };
+    }
+    
+    // Get tenant database client
+    const tenantDb = await getTenantDbClientUtil();
+    
+    // Map clerk ID to internal user ID
+    const user = await tenantDb.query.users.findFirst({
+      where: (users, { eq }) => eq(users.clerkId, userId)
+    });
+    
+    if (!user) {
+      return { status: 'error', message: 'User not found' };
+    }
+    
+    // Get case from database
+    const caseData = await getCaseQuery(tenantDb, id, user.id);
+    
+    if (!caseData) {
+      return { status: 'error', message: 'Case not found' };
+    }
+    
+    // Track view event
+    trackEvent('case_viewed', { caseId: id });
+    
+    // Normalize case
+    const normalizedCase = normalizeCase(caseData);
+    
+    return { status: 'success', data: normalizedCase };
+  } catch (error) {
+    console.error('Error fetching case:', error);
+    
+    captureError(error, {
+      context: 'getCase',
+      caseId: id
+    });
+    
+    return { status: 'error', message: 'Failed to fetch case' };
+  }
+}
+```
+
+### 3. Custom Hook for Single Entity
+
+```tsx
+// app/(authenticated)/features/cases/hooks/use-case.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getCase, updateCase, deleteCase } from '../actions/cases';
+import { useParams, useRouter } from 'next/navigation';
+import { useToast } from '@repo/design-system/components/ui/toast';
+
+export function useCase(id, initialCase = null) {
+  const params = useParams();
+  const tenant = params.tenant;
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const { toast } = useToast();
+  
+  // Query for fetching case
+  const query = useQuery({
+    queryKey: ['case', tenant, id],
+    queryFn: async () => {
+      const response = await getCase(id);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    initialData: initialCase,
+    enabled: !!tenant && !!id,
+  });
+  
+  // Mutation for updating case
+  const updateMutation = useMutation({
+    mutationFn: (data) => updateCase(id, data),
+    onMutate: async (data) => {
+      // Cancel related queries
+      await queryClient.cancelQueries({ queryKey: ['case', tenant, id] });
+      
+      // Snapshot current value
+      const previousCase = queryClient.getQueryData(['case', tenant, id]);
+      
+      // Optimistically update
+      queryClient.setQueryData(['case', tenant, id], old => ({
+        ...old,
+        ...data,
+        updatedAt: new Date().toISOString()
+      }));
+      
+      return { previousCase };
+    },
+    onSuccess: () => {
+      toast({
+        title: "Case updated",
+        description: "Changes saved successfully"
+      });
+      
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['cases', tenant] });
+    },
+    onError: (error, _, context) => {
+      // Revert to previous value
+      queryClient.setQueryData(['case', tenant, id], context.previousCase);
+      
+      toast({
+        variant: "destructive",
+        title: "Error updating case",
+        description: error.message
+      });
+    },
+    onSettled: () => {
+      // Always refetch to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ['case', tenant, id] });
+    }
+  });
+  
+  // Mutation for deleting case
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCase(id),
+    onSuccess: () => {
+      toast({
+        title: "Case deleted",
+        description: "Case has been permanently removed"
+      });
+      
+      // Invalidate cases list
+      queryClient.invalidateQueries({ queryKey: ['cases', tenant] });
+      
+      // Redirect to cases list
+      router.push(`/${tenant}/cases`);
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error deleting case",
+        description: error.message
+      });
+    }
+  });
+  
+  return {
+    // Query data
+    case: query.data,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    
+    // Mutations
+    updateCase: updateMutation.mutate,
+    deleteCase: deleteMutation.mutate,
+    
+    // Mutation states
+    isUpdating: updateMutation.isPending,
+    isDeleting: deleteMutation.isPending
+  };
+}
+```
+
+### 4. Client Component Using Single Entity Hook
+
+```tsx
+'use client'
+// app/(authenticated)/features/cases/components/case-details.tsx
+import { useCase } from '../hooks/use-case';
+import { useState } from 'react';
+
+export function CaseDetails({ initialCase, id }) {
+  const { 
+    case: caseData, 
+    isLoading, 
+    isError, 
+    error,
+    updateCase,
+    deleteCase,
+    isUpdating,
+    isDeleting
+  } = useCase(id, initialCase);
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    title: caseData?.title || '',
+    description: caseData?.description || '',
+    status: caseData?.status || 'draft'
+  });
+  
+  // Update form data when case changes
+  useEffect(() => {
+    if (caseData) {
+      setFormData({
+        title: caseData.title,
+        description: caseData.description,
+        status: caseData.status
+      });
+    }
+  }, [caseData]);
+  
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    updateCase(formData);
+    setIsEditing(false);
+  };
+  
+  const handleDeleteClick = () => {
+    if (confirm('Are you sure you want to delete this case?')) {
+      deleteCase();
+    }
+  };
+  
+  if (isLoading && !initialCase) {
+    return <p>Loading case details...</p>;
+  }
+  
+  if (isError) {
+    return (
+      <div className="p-4 bg-red-50 text-red-700 rounded">
+        Error loading case: {error.message}
+      </div>
+    );
+  }
+  
+  if (!caseData) {
+    return <p>Case not found</p>;
+  }
+  
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">{caseData.title}</h1>
+        <div className="space-x-2">
+          <button
+            onClick={() => setIsEditing(!isEditing)}
+            className="px-3 py-1 bg-blue-500 text-white rounded"
+            disabled={isUpdating || isDeleting}
+          >
+            {isEditing ? 'Cancel' : 'Edit'}
+          </button>
+          <button
+            onClick={handleDeleteClick}
+            className="px-3 py-1 bg-red-500 text-white rounded"
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+      
+      {isEditing ? (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="title" className="block text-sm font-medium">
+              Case Title
+            </label>
+            <input
+              id="title"
+              name="title"
+              value={formData.title}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border p-2"
+              required
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium">
+              Description
+            </label>
+            <textarea
+              id="description"
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border p-2"
+              rows={3}
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="status" className="block text-sm font-medium">
+              Status
+            </label>
+            <select
+              id="status"
+              name="status"
+              value={formData.status}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border p-2"
+            >
+              <option value="draft">Draft</option>
+              <option value="active">Active</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          
+          <button
+            type="submit"
+            className="bg-primary text-white px-4 py-2 rounded-md"
+            disabled={isUpdating}
+          >
+            {isUpdating ? 'Saving...' : 'Save Changes'}
+          </button>
+        </form>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium">Description</h2>
+            <p className="mt-1">{caseData.description || 'No description provided.'}</p>
+          </div>
+          
+          <div>
+            <h2 className="text-lg font-medium">Status</h2>
+            <span className={`inline-block px-2 py-1 rounded ${
+              caseData.status === 'active' ? 'bg-green-100 text-green-800' :
+              caseData.status === 'closed' ? 'bg-gray-100 text-gray-800' :
+              'bg-yellow-100 text-yellow-800'
+            }`}>
+              {caseData.status.charAt(0).toUpperCase() + caseData.status.slice(1)}
+            </span>
+          </div>
+          
+          <div>
+            <h2 className="text-lg font-medium">Created</h2>
+            <p className="mt-1">{new Date(caseData.createdAt).toLocaleString()}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Example: Related Entities Data Flow
+
+This example demonstrates how to handle related entities (cases and documents) using a compound hook:
+
+### 1. Compound Custom Hook
+
+```tsx
+// app/(authenticated)/features/cases/hooks/use-case-with-documents.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getCase } from '../actions/get-case';
+import { getCaseDocuments, uploadDocument, deleteDocument } from '../actions/documents';
+import { useParams } from 'next/navigation';
+import { useToast } from '@repo/design-system/components/ui/toast';
+
+export function useCaseWithDocuments(id, initialCase = null, initialDocuments = []) {
+  const params = useParams();
+  const tenant = params.tenant;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
+  // Query for the case
+  const caseQuery = useQuery({
+    queryKey: ['case', tenant, id],
+    queryFn: async () => {
+      const response = await getCase(id);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    initialData: initialCase,
+    enabled: !!tenant && !!id,
+  });
+  
+  // Query for case documents
+  const documentsQuery = useQuery({
+    queryKey: ['case-documents', tenant, id],
+    queryFn: async () => {
+      const response = await getCaseDocuments(id);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    initialData: initialDocuments,
+    enabled: !!tenant && !!id,
+  });
+  
+  // Mutation for uploading document
+  const uploadMutation = useMutation({
+    mutationFn: (file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('caseId', id);
+      return uploadDocument(formData);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Document uploaded",
+        description: "Document has been uploaded successfully"
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ['case-documents', tenant, id] });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error.message
+      });
+    }
+  });
+  
+  // Mutation for deleting document
+  const deleteMutation = useMutation({
+    mutationFn: (documentId) => deleteDocument(documentId),
+    onMutate: async (documentId) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['case-documents', tenant, id] });
+      
+      // Snapshot current documents
+      const previousDocuments = queryClient.getQueryData(['case-documents', tenant, id]);
+      
+      // Optimistically remove document
+      queryClient.setQueryData(['case-documents', tenant, id], old => 
+        old.filter(doc => doc.id !== documentId)
+      );
+      
+      return { previousDocuments };
+    },
+    onSuccess: () => {
+      toast({
+        title: "Document deleted",
+        description: "Document has been removed"
+      });
+    },
+    onError: (error, _, context) => {
+      queryClient.setQueryData(['case-documents', tenant, id], context.previousDocuments);
+      
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: error.message
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['case-documents', tenant, id] });
+    }
+  });
+  
+  return {
+    // Case data
+    case: caseQuery.data,
+    isCaseLoading: caseQuery.isLoading,
+    isCaseError: caseQuery.isError,
+    caseError: caseQuery.error,
+    
+    // Documents data
+    documents: documentsQuery.data || [],
+    isDocumentsLoading: documentsQuery.isLoading,
+    isDocumentsError: documentsQuery.isError,
+    documentsError: documentsQuery.error,
+    
+    // Combined loading state
+    isLoading: caseQuery.isLoading || documentsQuery.isLoading,
+    
+    // Mutations
+    uploadDocument: uploadMutation.mutate,
+    deleteDocument: deleteMutation.mutate,
+    
+    // Mutation states
+    isUploading: uploadMutation.isPending,
+    isDeleting: deleteMutation.isPending
+  };
+}
+```
+
+### 2. Component Using Compound Hook
+
+```tsx
+'use client'
+// app/(authenticated)/features/cases/components/case-with-documents.tsx
+import { useCaseWithDocuments } from '../hooks/use-case-with-documents';
+
+export function CaseWithDocuments({ initialCase, initialDocuments, id }) {
+  const { 
+    case: caseData,
+    documents,
+    isLoading,
+    uploadDocument,
+    deleteDocument,
+    isUploading,
+    isDeleting
+  } = useCaseWithDocuments(id, initialCase, initialDocuments);
+  
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      uploadDocument(file);
+      e.target.value = ''; // Reset file input
+    }
+  };
+  
+  const handleDeleteClick = (documentId) => {
+    if (confirm('Are you sure you want to delete this document?')) {
+      deleteDocument(documentId);
+    }
+  };
+  
+  if (isLoading && !initialCase) {
+    return <p>Loading...</p>;
+  }
+  
+  return (
+    <div className="space-y-8">
+      {/* Case details section */}
+      <div className="bg-white p-6 rounded-lg shadow-sm">
+        <h1 className="text-2xl font-bold mb-4">{caseData?.title}</h1>
+        <p className="text-gray-700">{caseData?.description}</p>
+        <div className="mt-4">
+          <span className={`inline-block px-2 py-1 rounded ${
+            caseData?.status === 'active' ? 'bg-green-100 text-green-800' :
+            caseData?.status === 'closed' ? 'bg-gray-100 text-gray-800' :
+            'bg-yellow-100 text-yellow-800'
+          }`}>
+            {caseData?.status?.charAt(0).toUpperCase() + caseData?.status?.slice(1)}
+          </span>
+        </div>
+      </div>
+      
+      {/* Documents section */}
+      <div className="bg-white p-6 rounded-lg shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Documents</h2>
+          <label className="cursor-pointer bg-primary text-white px-4 py-2 rounded-md">
+            <span>{isUploading ? 'Uploading...' : 'Upload Document'}</span>
+            <input
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={isUploading}
+            />
+          </label>
+        </div>
+        
+        {documents.length === 0 ? (
+          <p className="text-gray-500">No documents attached to this case.</p>
+        ) : (
+          <ul className="divide-y">
+            {documents.map(doc => (
+              <li key={doc.id} className="py-3 flex justify-between items-center">
+                <div>
+                  <p className="font-medium">{doc.filename}</p>
+                  <p className="text-sm text-gray-500">
+                    Uploaded {new Date(doc.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex space-x-2">
+                  <a
+                    href={doc.url}
+                    download
+                    className="px-3 py-1 bg-blue-500 text-white rounded"
+                  >
+                    Download
+                  </a>
+                  <button
+                    onClick={() => handleDeleteClick(doc.id)}
+                    className="px-3 py-1 bg-red-500 text-white rounded"
+                    disabled={isDeleting === doc.id}
+                  >
+                    {isDeleting === doc.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+## Example: Form with Data Normalization
+
+This example demonstrates how to implement a form that uses the normalization pipeline to ensure data quality:
+
+### 1. Server Action with Normalization Pipeline
+
+```typescript
+// app/(authenticated)/features/clients/actions/create-client.ts
+'use server'
+
+import { auth } from '@repo/auth/server';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
+import { insertClientQuery } from '@repo/database/queries/clients-queries';
+import { clientPipeline } from '@repo/schema/pipeline/client-pipeline';
+import { trackEvent } from '@repo/analytics/events';
+import { captureError } from '@repo/observability/error';
+
+export async function createClient(formData: FormData) {
+  try {
+    // 1. Authentication check
+    const { userId } = await auth();
+    if (!userId) {
+      return { status: 'error', message: 'Unauthorized' };
+    }
+    
+    // 2. Get tenant database connection
+    const tenantDb = await getTenantDbClientUtil();
+    
+    // 3. Map Clerk ID to internal user ID
+    const user = await tenantDb.query.users.findFirst({
+      where: (users, { eq }) => eq(users.clerkId, userId)
+    });
+    
+    if (!user) {
+      return { status: 'error', message: 'User not found' };
+    }
+    
+    // 4. Extract form data
+    const rawData = Object.fromEntries(formData.entries());
+    
+    // 5. Process through normalization pipeline
+    const pipelineResult = await clientPipeline.process(rawData, {
+      userId: user.id,
+      source: 'client-form'
+    });
+    
+    // 6. Check for pipeline errors
+    if (pipelineResult.errors && pipelineResult.errors.length > 0) {
+      return {
+        status: 'error',
+        message: 'Invalid client data',
+        errors: pipelineResult.errors
+      };
+    }
+    
+    // 7. Insert normalized data
+    const normalizedData = pipelineResult.result;
+    const newClient = await insertClientQuery(tenantDb, {
+      ...normalizedData,
+      createdBy: user.id
+    });
+    
+    // 8. Track client creation event
+    trackEvent('client_created', {
+      clientId: newClient.id
+    });
+    
+    // 9. Return success response with normalization changes
+    return { 
+      status: 'success', 
+      data: newClient,
+      changes: pipelineResult.changes // Normalization changes for user feedback
+    };
+  } catch (error) {
+    // 10. Error handling
+    console.error('Error creating client:', error);
+    
+    captureError(error, {
+      context: 'createClient',
+      data: formData
+    });
+    
+    return { status: 'error', message: 'Failed to create client' };
+  }
+}
+```
+
+### 2. Client Form Component
+
+```tsx
+'use client'
+// app/(authenticated)/features/clients/components/new-client-form.tsx
+import { useState } from 'react';
+import { createClient } from '../actions/create-client';
+import { useToast } from '@repo/design-system/components/ui/toast';
+import { useRouter } from 'next/navigation';
+
+export function NewClientForm() {
+  const { toast } = useToast();
+  const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    // other fields...
+  });
+  const [normalizationChanges, setNormalizationChanges] = useState([]);
+  
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setNormalizationChanges([]);
+    
+    try {
+      // Create FormData from form values
+      const formDataObj = new FormData();
+      Object.entries(formData).forEach(([key, value]) => {
+        formDataObj.append(key, value);
+      });
+      
+      // Submit to Server Action
+      const response = await createClient(formDataObj);
+      
+      if (response.status === 'error') {
+        toast({
+          variant: "destructive",
+          title: "Error creating client",
+          description: response.message
+        });
+        return;
+      }
+      
+      // Show normalization changes if any
+      if (response.changes && response.changes.length > 0) {
+        setNormalizationChanges(response.changes);
+        
+        toast({
+          title: "Data normalized",
+          description: "Some data was automatically formatted for consistency"
+        });
+      }
+      
+      // Success handling
+      toast({
+        title: "Client created",
+        description: `Client "${response.data.name}" created successfully`
+      });
+      
+      // Navigate to client details page
+      router.push(`/clients/${response.data.id}`);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="name" className="block text-sm font-medium">
+          Client Name
+        </label>
+        <input
+          id="name"
+          name="name"
+          value={formData.name}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border p-2"
+          required
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium">
+          Email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border p-2"
+          required
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="phone" className="block text-sm font-medium">
+          Phone
+        </label>
+        <input
+          id="phone"
+          name="phone"
+          value={formData.phone}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border p-2"
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="address" className="block text-sm font-medium">
+          Address
+        </label>
+        <textarea
+          id="address"
+          name="address"
+          value={formData.address}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border p-2"
+          rows={3}
+        />
+      </div>
+      
+      {/* Display normalization changes if any */}
+      {normalizationChanges.length > 0 && (
+        <div className="bg-blue-50 p-3 rounded text-sm">
+          <p className="font-medium">Data was automatically formatted:</p>
+          <ul className="list-disc pl-5 mt-1">
+            {normalizationChanges.map((change, index) => (
+              <li key={index}>{change.field}: {change.original} → {change.normalized}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      
+      <button
+        type="submit"
+        className="bg-primary text-white px-4 py-2 rounded-md"
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? 'Creating...' : 'Create Client'}
+      </button>
+    </form>
+  );
+}
+```
+
+### 3. Normalization Pipeline Definition
+
+```typescript
+// packages/schema/src/pipeline/client-pipeline.ts
+import { createTransformPipeline } from '../pipeline';
+import { clientSchema } from '../entities/client';
+import { ResilientNormalizer } from '../resilience/error-handler';
+import { monitorDataQuality } from '../monitoring';
+import { z } from 'zod';
+
+// Sanitization stage
+const sanitizeClientData = (data: any) => {
+  // Basic sanitization
+  const sanitized = { ...data };
+  
+  // Trim whitespace from string fields
+  Object.keys(sanitized).forEach(key => {
+    if (typeof sanitized[key] === 'string') {
+      sanitized[key] = sanitized[key].trim();
+    }
+  });
+  
+  // Sanitize HTML if present in description or notes
+  if (sanitized.notes) {
+    sanitized.notes = sanitizeHtml(sanitized.notes);
+  }
+  
+  return sanitized;
+};
+
+// Normalization stage
+const normalizeClientData = (data: any) => {
+  const normalized = { ...data };
+  
+  // Format name with title case
+  if (normalized.name) {
+    normalized.name = titleCase(normalized.name);
+  }
+  
+  // Format email as lowercase
+  if (normalized.email) {
+    normalized.email = normalized.email.toLowerCase();
+  }
+  
+  // Format phone number
+  if (normalized.phone) {
+    normalized.phone = formatPhoneNumber(normalized.phone);
+  }
+  
+  return normalized;
+};
+
+// Create the client pipeline
+export const clientPipeline = createTransformPipeline({
+  name: 'clientPipeline',
+  stages: [
+    {
+      name: 'sanitize',
+      transform: (data, context) => sanitizeClientData(data)
+    },
+    {
+      name: 'normalize',
+      transform: (data, context) => normalizeClientData(data)
+    },
+    {
+      name: 'validate',
+      transform: async (data, context) => {
+        const resilientValidator = new ResilientNormalizer({ 
+          strategy: 'use-partial',
+          logErrors: true
+        });
+        
+        const validationResult = await resilientValidator.normalize(clientSchema, data);
+        
+        if (!validationResult.success) {
+          console.warn('Validation errors:', validationResult.errors);
+        }
+        
+        return validationResult.result;
+      }
+    },
+    {
+      name: 'monitor',
+      transform: (data, context) => monitorDataQuality('client', data)
+    }
+  ],
+  resilienceOptions: {
+    strategy: 'use-partial',
+    logErrors: true
+  }
+});
+```
+
+### 4. Schema Definition
+
+```typescript
+// packages/schema/src/entities/client.ts
+import { z } from 'zod';
+
+export const clientSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email format"),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  notes: z.string().optional(),
+  // other fields...
+});
+
+export type ClientData = z.infer<typeof clientSchema>;
+```
+
+This example demonstrates a complete flow for a form that incorporates data normalization:
+
+1. The user fills out the form with client information
+2. On submission, the data is sent to a Server Action
+3. The Server Action processes the data through the normalization pipeline:
+   - Sanitizes input to remove potentially harmful content
+   - Normalizes data formats (title case for names, lowercase for emails, etc.)
+   - Validates against the client schema
+   - Monitors data quality metrics
+4. If normalization changes data, these changes are returned to the client
+5. The UI shows the user what normalization changes were made
+6. The normalized data is stored in the database
+
+This approach ensures data quality and consistency while providing transparency to users about how their data is being processed.
+
+## Best Practices for Data Flow Implementation
+
+### 1. Server Components and Server Actions
+
+- **Use Server Components for Initial Data**: Fetch initial page data on the server for better performance
+- **Return Consistent Response Objects**: All Server Actions should return consistent response formats
+- **Handle Errors Properly**: Implement comprehensive error handling in all Server Actions
+- **Use Type Safety**: Leverage TypeScript for type safety throughout
+- **Validate Input Data**: Always validate input data before processing
+- **Authenticate First**: Always verify authentication at the beginning of each Server Action
+- **Normalize Data**: Process all input data through the normalization pipeline
+
+### 2. Database Operations
+
+- **Use Tenant-Specific Connections**: Always use `getTenantDbClientUtil()` for database operations
+- **Implement Query Functions**: Keep database query logic in dedicated query functions
+- **Map Clerk ID to Internal User ID**: Always map external auth IDs to internal user IDs
+- **Implement Authorization Checks**: Verify user access rights for data operations
+- **Use Transactions**: Wrap related operations in transactions when necessary
+- **Limit Query Results**: Add pagination or limits to avoid excessive data fetching
+- **Use Prepared Statements**: Prefer prepared statements to prevent SQL injection
+
+### 3. Client-Side Data Management
+
+- **Create Custom Hooks**: Centralize data access logic in custom hooks
+- **Use React Query**: Leverage React Query for data fetching, caching, and synchronization
+- **Implement Optimistic Updates**: Use optimistic updates for better user experience
+- **Handle Loading and Error States**: Properly handle loading and error states in UI
+- **Use Toast Notifications**: Provide feedback for mutations with toast notifications
+- **Combine Related Data Fetching**: Use compound hooks for related data
+- **Prefetch Probable Next Data**: Implement prefetching for likely user paths
+- **Avoid Duplicate Queries**: Use centralized hooks to prevent duplicate network requests
+
+### 4. Error Handling
+
+- **Implement Comprehensive Error Tracking**: Use error tracking at all levels
+- **Use Error Boundaries**: Implement Error Boundaries for graceful degradation
+- **Provide User-Friendly Error Messages**: Display helpful error messages
+- **Log Errors Server-Side**: Log errors on the server for debugging
+- **Include Context in Error Reporting**: Add relevant context to error reports
+- **Handle Network Errors**: Implement proper handling for network failures
+- **Retry Critical Operations**: Implement retry logic for important operations
+
+### 5. Performance Optimization
+
+- **Implement Proper Caching**: Use appropriate caching strategies
+- **Limit Data Transfer**: Only fetch the data you need
+- **Use Pagination**: Implement pagination for large data sets
+- **Optimize Component Rendering**: Prevent unnecessary re-renders
+- **Implement Data Prefetching**: Prefetch data that users are likely to need
+- **Use Server-Side Rendering**: Leverage Server Components for initial rendering
+- **Implement Proper Cache Invalidation**: Update cache when data changes
+
+### 6. Security Best Practices
+
+- **Validate All Input**: Validate all input data server-side
+- **Implement Proper Authorization**: Check access rights for all operations
+- **Use Secure Database Connections**: Ensure database connections are secure
+- **Sanitize Output**: Sanitize data before returning to clients
+- **Implement Rate Limiting**: Protect APIs with rate limiting
+- **Use HTTPS**: Ensure all communication is encrypted
+- **Implement Proper Error Handling**: Avoid leaking sensitive information in errors
+
+### 2. Database Operations
+
+- **Use Tenant-Specific Connections**: Always use `getTenantDbClientUtil()` for database operations
+- **Implement Query Functions**: Keep database query logic in dedicated query functions
+- **Map Clerk ID to Internal User ID**: Always map external auth IDs to internal user IDs
+- **Implement Authorization Checks**: Verify user access rights for data operations
+- **Use Transactions**: Wrap related operations in transactions when necessary
+- **Limit Query Results**: Add pagination or limits to avoid excessive data fetching
+- **Use Prepared Statements**: Prefer prepared statements to prevent SQL injection
+
+### 3. Client-Side Data Management
+
+- **Create Custom Hooks**: Centralize data access logic in custom hooks
+- **Use React Query**: Leverage React Query for data fetching, caching, and synchronization
+- **Implement Optimistic Updates**: Use optimistic updates for better user experience
+- **Handle Loading and Error States**: Properly handle loading and error states in UI
+- **Use Toast Notifications**: Provide feedback for mutations with toast notifications
+- **Combine Related Data Fetching**: Use compound hooks for related data
+- **Prefetch Probable Next Data**: Implement prefetching for likely user paths
+- **Avoid Duplicate Queries**: Use centralized hooks to prevent duplicate network requests
+
+### 4. Error Handling
+
+- **Implement Comprehensive Error Tracking**: Use error tracking at all levels
+- **Use Error Boundaries**: Implement Error Boundaries for graceful degradation
+- **Provide User-Friendly Error Messages**: Display helpful error messages
+- **Log Errors Server-Side**: Log errors on the server for debugging
+- **Include Context in Error Reporting**: Add relevant context to error reports
+- **Handle Network Errors**: Implement proper handling for network failures
+- **Retry Critical Operations**: Implement retry logic for important operations
+
+### 5. Performance Optimization
+
+- **Implement Proper Caching**: Use appropriate caching strategies
+- **Limit Data Transfer**: Only fetch the data you need
+- **Use Pagination**: Implement pagination for large data sets
+- **Optimize Component Rendering**: Prevent unnecessary re-renders
+- **Implement Data Prefetching**: Prefetch data that users are likely to need
+- **Use Server-Side Rendering**: Leverage Server Components for initial rendering
+- **Implement Proper Cache Invalidation**: Update cache when data changes
+
+### 6. Security Best Practices
+
+- **Validate All Input**: Validate all input data server-side
+- **Implement Proper Authorization**: Check access rights for all operations
+- **Use Secure Database Connections**: Ensure database connections are secure
+- **Sanitize Output**: Sanitize data before returning to clients
+- **Implement Rate Limiting**: Protect APIs with rate limiting
+- **Use HTTPS**: Ensure all communication is encrypted
+- **Implement Proper Error Handling**: Avoid leaking sensitive information in errors

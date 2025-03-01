@@ -36,6 +36,11 @@ export function CreateDepartmentDialog({
   // Handle both controlled and uncontrolled states
   const open = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen;
   const setOpen = setControlledOpen || setUncontrolledOpen;
+  
+  // Close the dialog on successful form submission
+  const handleSuccess = () => {
+    setOpen(false);
+  };
 
   // Show nothing while detecting mobile state
   if (typeof isMobile === 'undefined') {
@@ -56,7 +61,7 @@ export function CreateDepartmentDialog({
             <DrawerTitle>Crear Nuevo Departamento</DrawerTitle>
           </DrawerHeader>
           <div className="px-4 py-6">
-            <DepartmentForm />
+            <DepartmentForm onSuccess={handleSuccess} />
           </div>
         </DrawerContent>
       </Drawer>
@@ -76,7 +81,7 @@ export function CreateDepartmentDialog({
           <DialogTitle>Crear Nuevo Departamento</DialogTitle>
         </DialogHeader>
         <div className="py-4">
-          <DepartmentForm />
+          <DepartmentForm onSuccess={handleSuccess} />
         </div>
       </DialogContent>
     </Dialog>

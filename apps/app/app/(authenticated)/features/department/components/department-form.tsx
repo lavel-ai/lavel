@@ -1,7 +1,6 @@
 // apps/app/app/(authenticated)/features/departments/components/department-form.tsx
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -10,9 +9,8 @@ import { Form, FormField, FormItem, FormControl, FormMessage } from '@repo/desig
 import { NormalizedTextInput } from '@repo/design-system/components/form/normalized-text-input';
 import { NormalizedTextarea } from '@repo/design-system/components/form/normalized-text-area-input';
 import { normalizeText } from '@repo/schema';
-import { createDepartment } from '../actions/department-actions';
-import { useToast } from '@repo/design-system/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { useDepartments } from '../hooks/use-departments';
 
 // Create a schema for the form that matches our backend schema
 const formSchema = z.object({
@@ -24,9 +22,12 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-export function DepartmentForm() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { toast } = useToast();
+interface DepartmentFormProps {
+  onSuccess?: () => void;
+}
+
+export function DepartmentForm({ onSuccess }: DepartmentFormProps) {
+  const { createDepartment, isCreating } = useDepartments();
   
   // Initialize the form with react-hook-form
   const form = useForm<FormValues>({
@@ -39,33 +40,12 @@ export function DepartmentForm() {
   
   // Handle form submission
   const onSubmit = async (data: FormValues) => {
-    setIsSubmitting(true);
-    try {
-      const result = await createDepartment(data);
-      
-      if (result.status === 'success') {
-        toast({
-          title: '¡Departamento creado!',
-          description: result.message,
-          variant: 'default',
-        });
+    createDepartment(data, {
+      onSuccess: () => {
         form.reset(); // Reset the form on success
-      } else {
-        toast({
-          title: 'Error',
-          description: result.message,
-          variant: 'destructive',
-        });
+        if (onSuccess) onSuccess();
       }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
   
   return (
@@ -104,7 +84,7 @@ export function DepartmentForm() {
                   onChange={field.onChange}
                   error={form.formState.errors.description?.message}
                   normalizeFn={normalizeText.trim}
-                  placeholder="Descripción del Area"
+                  placeholder="Descripción del departamento..."
                 />
               </FormControl>
               <FormMessage />
@@ -112,15 +92,9 @@ export function DepartmentForm() {
           )}
         />
         
-        <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Creando...
-            </>
-          ) : (
-            'Crear Area'
-          )}
+        <Button type="submit" disabled={isCreating} className="w-full">
+          {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Crear Departamento
         </Button>
       </form>
     </Form>

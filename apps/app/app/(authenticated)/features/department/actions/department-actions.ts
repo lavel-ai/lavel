@@ -5,7 +5,7 @@ import { auth } from '@repo/auth/server';
 import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
 import { getInternalUserId } from '@/app/actions/users/users-actions';
 import { processDepartmentData } from '@repo/schema/src/pipeline/department-pipeline';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { recordNormalizationEvent } from '@repo/schema/src/events/';
 import { departments } from '@repo/database/src/tenant-app/schema/departments-schema';
 import { eq } from 'drizzle-orm';
@@ -15,13 +15,13 @@ export async function createDepartment(formData: { name: string; description?: s
     // Verify Clerk authentication
     const { userId: clerkId } = await auth();
     if (!clerkId) {
-      return { status: 'error', message: 'No autorizado' };
+      return { status: 'error' as const, message: 'No autorizado' };
     }
 
     // Get internal user ID from Clerk ID
     const internalUserId = await getInternalUserId();
     if (!internalUserId) {
-      return { status: 'error', message: 'Usuario interno no encontrado' };
+      return { status: 'error' as const, message: 'Usuario interno no encontrado' };
     }
 
     // Record start time for performance tracking
@@ -45,7 +45,7 @@ export async function createDepartment(formData: { name: string; description?: s
     
     if (exists) {
       return {
-        status: 'error',
+        status: 'error' as const,
         message: `Ya existe un departamento con el nombre "${result.name}"`,
       };
     }
@@ -73,10 +73,14 @@ export async function createDepartment(formData: { name: string; description?: s
       },
     });
     
-    revalidatePath('/my-firm');
+    // Revalidate departments cache tag
+    revalidateTag('departments');
+    
+    // Revalidate the path
+    revalidatePath('/departments');
     
     return {
-      status: 'success',
+      status: 'success' as const,
       data: departmentResult,
       message: `Departamento "${departmentResult.name}" creado exitosamente`,
       quality: metrics,
@@ -110,8 +114,9 @@ export async function createDepartment(formData: { name: string; description?: s
     });
     
     return {
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Error al crear el departamento',
+      status: 'error' as const,
+      message: error instanceof Error ? error.message : 'Ocurrió un error inesperado al crear el departamento',
+      errorDetail: error instanceof Error ? error.name : 'UnknownError',
     };
   }
 }

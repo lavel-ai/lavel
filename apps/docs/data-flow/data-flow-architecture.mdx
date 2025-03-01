@@ -1,0 +1,94 @@
+---
+title: 'Data Flow Architecture'
+description: 'How data flows through the Lavel AI platform'
+---
+
+# Data Flow Architecture
+
+The Data Flow Architecture documentation explains how data flows through the Lavel AI platform, from user interactions to database operations and back to the UI.
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="diagram-project" href="/data-flow/overview">
+    High-level overview of the data flow architecture
+  </Card>
+  <Card title="Server-Side" icon="server" href="/data-flow/server-side">
+    Server Components and Server Actions
+  </Card>
+  <Card title="Client-Side" icon="laptop-code" href="/data-flow/client-side">
+    React Query and client-side data management
+  </Card>
+  <Card title="Cross-Cutting Concerns" icon="layer-group" href="/data-flow/cross-cutting">
+    Authentication, error handling, analytics, and more
+  </Card>
+  <Card title="Examples" icon="code" href="/data-flow/examples">
+    Complete examples and best practices
+  </Card>
+</CardGroup>
+
+## Key Principles
+
+1. **Server-Centric Data Fetching**: Initial data is fetched on the server using Server Components and Server Actions
+2. **Client-Side Interactivity**: React Query provides client-side data management for interactive updates
+3. **Tenant Isolation**: All data operations respect tenant boundaries
+4. **Type Safety**: TypeScript ensures type safety throughout the data flow
+5. **Multi-level Caching**: Caching at server, client, and database levels improves performance
+6. **Centralized Data Access**: Custom hooks centralize data access to prevent duplicate queries
+
+## System Context Diagram
+
+<Frame>
+  <img src="/images/data-flow-overview.png" alt="Data Flow Overview" />
+</Frame>
+
+## Data Flow Layers
+
+Our data flow architecture consists of several layers working together:
+
+### 1. User Interface Layer
+- **Server Components**: Initial rendering and data fetching
+- **Client Components**: Interactive UI elements
+
+### 2. Data Management Layer
+- **Server Actions**: Server-side data operations
+- **Custom Hooks**: Centralized data access
+- **React Query**: Client-side data management
+
+### 3. Database Layer
+- **Tenant Database**: Isolated tenant data
+- **Database Query Functions**: Encapsulated database operations
+
+## Cross-Cutting Concerns
+
+Several cross-cutting concerns are integrated throughout the data flow:
+
+- **Authentication**: User authentication and tenant identification
+- **Error Handling**: Comprehensive error tracking and reporting
+- **Analytics**: User behavior tracking
+- **Feature Flags**: Controlled feature rollout
+- **Data Normalization**: Data quality and consistency
+
+## When to Use What
+
+| When You Need To... | Use... |
+|---------------------|--------|
+| Fetch initial page data | Server Components with Server Actions |
+| Update data after user interaction | React Query mutations via custom hooks |
+| Share data between components | Custom data hooks with React Query |
+| Create, update, or delete data | Server Actions with proper validation |
+| Access the database | Server Actions with getTenantDbClientUtil() |
+| Handle related entities | Compound custom hooks |
+| Implement optimistic updates | React Query mutations with onMutate |
+| Provide feedback for operations | Toast notifications in mutation callbacks |
+
+## Getting Started
+
+To implement data flow in your feature, follow these steps:
+
+1. Create Server Actions for data operations in `features/[feature]/actions/`
+2. Implement database query functions in `@repo/database/queries/`
+3. Create custom hooks for data access in `features/[feature]/hooks/`
+4. Implement Server Components for initial data fetching
+5. Create Client Components for interactive elements
+6. Connect everything with proper error handling and feedback
+
+For detailed examples, see the [Examples](/data-flow/examples) section.

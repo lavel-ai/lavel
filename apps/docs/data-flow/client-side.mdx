@@ -1,0 +1,503 @@
+---
+title: 'Client-Side Data Flow'
+description: 'Data flow on the client in the Lavel AI platform'
+---
+
+# Client-Side Data Flow
+
+This document describes how data flows through client-side components of the Lavel AI platform, focusing on React Query integration, client components, and optimistic updates.
+
+## React Query Integration
+
+We use React Query for client-side data management, providing:
+
+1. **Automatic Caching**: Reduces unnecessary network requests
+2. **Background Refetching**: Keeps data fresh without blocking UI
+3. **Loading States**: Standardized loading indicators
+4. **Error Handling**: Consistent error management
+5. **Optimistic Updates**: Immediate UI updates with rollback on failure
+
+### React Query Configuration
+
+Our React Query client is configured with tenant-aware caching and error handling:
+
+```typescript
+// packages/state/query-client.ts
+import { QueryClient, QueryCache } from '@tanstack/react-query';
+import { captureError } from '@repo/observability/error';
+
+export const createQueryClient = () => {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000, // 1 minute
+        cacheTime: 5 * 60 * 1000, // 5 minutes
+        retry: 1,
+        refetchOnWindowFocus: process.env.NODE_ENV === 'production',
+        refetchOnMount: true,
+      },
+    },
+    queryCache: new QueryCache({
+      onError: (error, query) => {
+        // Only report errors that aren't network-related
+        if (!(error instanceof Error) || !error.message.includes('Network')) {
+          captureError(error, {
+            type: 'query_error',
+            queryKey: query.queryKey
+          });
+        }
+      },
+    }),
+  });
+};
+```
+
+### Tenant-Aware Queries
+
+Query keys incorporate tenant information to maintain proper data isolation:
+
+```typescript
+// Custom hook with tenant-aware querying
+export function useCases(filters = {}) {
+  const { tenant } = useTenant();
+  
+  // Create a tenant-specific query key
+  const queryKey = ['cases', tenant.id, filters];
+  
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
+      const response = await getCases(filters);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    enabled: !!tenant.id,
+  });
+}
+```
+
+## Client Components
+
+Client Components handle user interactions and dynamic data updates. They:
+
+1. Receive initial data as props from Server Components
+2. Use React Query for interactive data fetching and mutations
+3. Manage local UI state
+4. Handle user interactions
+5. Display loading and error states
+
+### Client Component Pattern
+
+```tsx
+'use client'
+// Example Client Component using React Query
+// apps/app/(authenticated)/features/cases/components/cases-list.tsx
+import { useQuery } from '@tanstack/react-query';
+import { useToast } from '@repo/design-system/components/ui/toast';
+import { getCases } from '../actions/get-cases';
+import { useState } from 'react';
+import { CaseCard } from './case-card';
+
+export function CasesList({ initialCases }) {
+  const [filters, setFilters] = useState({});
+  const { toast } = useToast();
+  
+  // Use React Query with initial data
+  const { data: cases, isLoading, isError, error } = useQuery({
+    queryKey: ['cases', filters],
+    queryFn: async () => {
+      const response = await getCases(filters);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    initialData: initialCases,
+    staleTime: 60 * 1000, // 1 minute
+  });
+  
+  // Show error toast if query fails
+  if (isError && error) {
+    toast({
+      variant: "destructive",
+      title: "Error loading cases",
+      description: error.message
+    });
+  }
+  
+  // Filter change handler
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters);
+  };
+  
+  return (
+    <div>
+      <div className="mb-4">
+        <CaseFilters 
+          filters={filters} 
+          onChange={handleFilterChange}
+        />
+      </div>
+      
+      {isLoading ? (
+        <p>Loading...</p>
+      ) : cases?.length === 0 ? (
+        <p>No cases found</p>
+      ) : (
+        <div className="grid gap-4">
+          {cases?.map(caseItem => (
+            <CaseCard key={caseItem.id} caseData={caseItem} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Mutations and Forms
+
+For data modifications, we use React Query's `useMutation` hook with optimistic updates:
+
+### Form Submission Pattern
+
+```tsx
+'use client'
+// Example form component with mutation
+// apps/app/(authenticated)/features/cases/components/new-case-form.tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@repo/design-system/components/ui/toast';
+import { createCase } from '../actions/create-case';
+import { useParams, useRouter } from 'next/navigation';
+
+export function NewCaseForm({ onSuccess }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const params = useParams();
+  const tenant = params.tenant;
+  const router = useRouter();
+  
+  const mutation = useMutation({
+    mutationFn: createCase,
+    
+    // Optimistic update
+    onMutate: async (formData) => {
+      // Convert FormData to plain object for optimistic update
+      const data = Object.fromEntries(formData.entries());
+      
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['cases']);
+      
+      // Snapshot current cases
+      const previousCases = queryClient.getQueryData(['cases']);
+      
+      // Create optimistic case
+      const optimisticCase = {
+        id: 'temp-id-' + Date.now(),
+        title: data.title,
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        // Other defaults...
+      };
+      
+      // Add optimistic case to query data
+      queryClient.setQueryData(['cases'], (old) => {
+        return [optimisticCase, ...(old || [])];
+      });
+      
+      return { previousCases };
+    },
+    
+    // On success
+    onSuccess: (data) => {
+      toast({
+        title: "Case created successfully",
+        description: `Case "${data.title}" has been created.`
+      });
+      
+      // Navigate to new case
+      router.push(`/${tenant}/cases/${data.id}`);
+      
+      if (onSuccess) onSuccess();
+    },
+    
+    // On error, rollback to previous cases
+    onError: (error, _, context) => {
+      queryClient.setQueryData(['cases'], context?.previousCases);
+      
+      toast({
+        variant: "destructive",
+        title: "Failed to create case",
+        description: error.message
+      });
+    },
+    
+    // Always refetch after mutation
+    onSettled: () => {
+      queryClient.invalidateQueries(['cases']);
+    }
+  });
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    mutation.mutate(new FormData(e.target));
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="title" className="block text-sm font-medium">
+            Case Title
+          </label>
+          <input
+            id="title"
+            name="title"
+            className="mt-1 block w-full rounded-md border p-2"
+            required
+          />
+        </div>
+        
+        <button
+          type="submit"
+          className="bg-primary text-white px-4 py-2 rounded-md"
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? 'Creating...' : 'Create Case'}
+        </button>
+      </div>
+    </form>
+  );
+}
+```
+
+## Optimistic Updates
+
+Optimistic updates provide immediate UI feedback while the server operation completes:
+
+### Optimistic Update Pattern
+
+```typescript
+// Example of optimistic update for case update
+const updateCaseMutation = useMutation({
+  mutationFn: updateCase,
+  
+  // Optimistic update
+  onMutate: async (variables) => {
+    // Variables contains { id, data }
+    const { id, data } = variables;
+    
+    // Cancel outgoing refetches
+    await queryClient.cancelQueries(['case', id]);
+    
+    // Snapshot current case
+    const previousCase = queryClient.getQueryData(['case', id]);
+    
+    // Update case in cache
+    queryClient.setQueryData(['case', id], old => ({
+      ...old,
+      ...data,
+      updatedAt: new Date().toISOString()
+    }));
+    
+    // Return context for potential rollback
+    return { previousCase };
+  },
+  
+  // On error, roll back
+  onError: (err, variables, context) => {
+    const { id } = variables;
+    queryClient.setQueryData(['case', id], context.previousCase);
+    
+    toast({
+      variant: "destructive",
+      title: "Update failed",
+      description: err.message
+    });
+  },
+  
+  // Always refetch after error or success
+  onSettled: (_, __, variables) => {
+    const { id } = variables;
+    queryClient.invalidateQueries(['case', id]);
+  }
+});
+```
+
+## Client-Side Caching
+
+React Query provides a robust caching system with several key features:
+
+### Time-based Invalidation
+
+Cached data has appropriate TTL (Time To Live) settings based on data type:
+
+| Data Type | TTL | Rationale |
+|-----------|-----|-----------|
+| User Profile | 15 minutes | Low change frequency, medium importance |
+| Document List | 1 minute | Medium change frequency, high importance |
+| Case Details | 30 seconds | High change frequency, critical importance |
+| Static Data | 1 hour | Very low change frequency |
+
+### Prefetching
+
+Improve user experience by prefetching probable next data:
+
+```typescript
+// Example of prefetching case details when hovering over a case
+function CaseList() {
+  const queryClient = useQueryClient();
+  
+  // Prefetch case details when hovering over a case
+  const prefetchCase = (caseId) => {
+    queryClient.prefetchQuery({
+      queryKey: ['case', caseId],
+      queryFn: () => fetchCaseDetails(caseId),
+      staleTime: 30 * 1000 // 30 seconds
+    });
+  };
+  
+  return (
+    <ul>
+      {cases?.map(caseItem => (
+        <li 
+          key={caseItem.id} 
+          onMouseEnter={() => prefetchCase(caseItem.id)}
+        >
+          {caseItem.title}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Infinite Queries
+
+For large datasets, use infinite queries with pagination:
+
+```typescript
+// Example of infinite query for case comments
+function CaseComments({ caseId }) {
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status
+  } = useInfiniteQuery({
+    queryKey: ['caseComments', caseId],
+    queryFn: ({ pageParam = 1 }) => fetchCaseComments(caseId, pageParam),
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+  });
+  
+  return (
+    <div>
+      {status === 'pending' ? (
+        <p>Loading comments...</p>
+      ) : status === 'error' ? (
+        <p>Error loading comments</p>
+      ) : (
+        <>
+          {data.pages.map((page, i) => (
+            <React.Fragment key={i}>
+              {page.comments.map(comment => (
+                <CommentItem key={comment.id} comment={comment} />
+              ))}
+            </React.Fragment>
+          ))}
+          
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={!hasNextPage || isFetchingNextPage}
+          >
+            {isFetchingNextPage
+              ? 'Loading more...'
+              : hasNextPage
+              ? 'Load more'
+              : 'No more comments'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+## Error Handling
+
+Client-side error handling is integrated with React Query and the toast system:
+
+```typescript
+// Example of error handling in a query
+const { data, error, isError } = useQuery({
+  queryKey: ['data'],
+  queryFn: async () => {
+    const response = await fetchData();
+    
+    if (response.status === 'error') {
+      throw new Error(response.message);
+    }
+    
+    return response.data;
+  },
+  onError: (error) => {
+    // Log to error tracking
+    captureError(error, {
+      component: 'DataComponent',
+      context: 'data fetching'
+    });
+    
+    // Show toast
+    toast({
+      variant: "destructive",
+      title: "Error fetching data",
+      description: error.message
+    });
+  }
+});
+```
+
+## Integration with Server Components
+
+Client Components can receive initial data from Server Components to enable hydration without loading states:
+
+```typescript
+// Server Component
+export default async function CasePage({ params }) {
+  // Fetch initial data on the server
+  const caseData = await getCase(params.id);
+  
+  // Pass data to Client Component
+  return <CaseDetails initialData={caseData} id={params.id} />;
+}
+
+// Client Component
+'use client'
+export function CaseDetails({ initialData, id }) {
+  // Use initialData for first render, then refresh in background
+  const { data, isLoading } = useQuery({
+    queryKey: ['case', id],
+    queryFn: () => getCase(id),
+    initialData,
+    staleTime: 30 * 1000 // 30 seconds
+  });
+  
+  // Component logic...
+}
+```
+
+## Best Practices
+
+1. **Tenant-Aware Query Keys**: Always include tenant information in query keys
+2. **Structured Error Handling**: Implement consistent error handling with toast notifications
+3. **Optimistic Updates**: Use optimistic updates for better user experience
+4. **Initial Data from Server**: Pass initial data from Server Components when possible
+5. **Appropriate TTL Settings**: Configure cache TTL based on data volatility
+6. **Prefetching**: Implement prefetching for likely user paths
+7. **Toast Notifications**: Provide user feedback for mutations and errors
+8. **Type Safety**: Use TypeScript for all data operations
+9. **Query Key Consistency**: Maintain consistent query key structure across the application
+10. **Avoid Unnecessary Fetching**: Use enabled option to prevent unnecessary data fetching

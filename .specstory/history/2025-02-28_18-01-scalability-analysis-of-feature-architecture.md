@@ -5542,7 +5542,692 @@ export default async function CasesPage({ params }) {
         {/* Pass initial data to Client Component */}
         <CasesList initialCases={initialCases} tenant={params.tenant} />
       </Suspense>
+    </div>
+  );
+}
+```
+
+### 2. Server Action (Get Cases)
+
+```tsx
+// app/(authenticated)/features/cases/actions/get-cases.ts
+'use server'
+
+import { auth } from '@repo/auth/server';
+import { redis } from '@repo/cache/redis';
+import { getTenantDbClientUtil } from '@repo/database/tenant-db';
+import { getCasesQuery } from '@repo/database/queries/cases-queries';
+import { normalizeCase } from '@repo/database/utils/normalize/case';
+import { headers } from 'next/headers';
+
+type GetCasesResponse = {
+  status: 'success' | 'error';
+  data?: any[];
+  message?: string;
+}
+
+export async function getCases(filters = {}): Promise<GetCasesResponse> {
+  try {
+    // Authenticate
+    const { userId } = await auth();
+    if (!userId) {
+      return { status: 'error', message: 'Unauthorized' };
+    }
     
+    // Get tenant from request
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const tenantId = host.split('.')[0];
+    
+    if (!tenantId || tenantId === 'app' || tenantId === 'localhost:3000') {
+      return { status: 'error', message: 'Invalid tenant' };
+    }
+    
+    // Try cache first
+    const cacheKey = `${tenantId}:cases:list:${JSON.stringify(filters)}`;
+    const cached = await redis.get(cacheKey);
+    
+    if (cached) {
+      return { status: 'success', data: JSON.parse(cached) };
+    }
+    
+    // Get tenant database client
+    const tenantDb = await getTenantDbClientUtil(tenantId);
+    
+    // Map clerk ID to internal user ID
+    const user = await tenantDb.query.users.findFirst({
+      where: (users, { eq }) => eq(users.clerkId, userId)
+    });
+    
+    if (!user) {
+      return { status: 'error', message: 'User not found' };
+    }
+    
+    // Get cases from database
+    const cases = await getCasesQuery(tenantDb, user.id, filters);
+    
+    // Normalize cases for client
+    const normalizedCases = cases.map(normalizeCase);
+    
+    // Cache results
+    await redis.set(cacheKey, JSON.stringify(normalizedCases), 'EX', 60);
+    
+    return { status: 'success', data: normalizedCases };
+  } catch (error) {
+    console.error('Error fetching cases:', error);
+    return { status: 'error', message: 'Failed to fetch cases' };
+  }
+}
+```
+
+### 3. Database Query Function
+
+```tsx
+// packages/database/src/tenant-app/queries/cases-queries.ts
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { cases, caseAssignments } from '../schema';
+
+export async function getCasesQuery(
+  db,
+  userId,
+  filters = {}
+) {
+  // Build query based on filters
+  const conditions = [
+    // Cases created by user or assigned to user
+    sql`(${eq(cases.createdBy, userId)} OR EXISTS (
+      SELECT 1 FROM ${caseAssignments}
+      WHERE ${and(
+        eq(caseAssignments.caseId, cases.id),
+        eq(caseAssignments.userId, userId)
+      )}
+    ))`
+  ];
+  
+  // Add status filter if provided
+  if (filters.status) {
+    conditions.push(eq(cases.status, filters.status));
+  }
+  
+  // Execute query
+  return db.select()
+    .from(cases)
+    .where(and(...conditions))
+    .orderBy(desc(cases.createdAt))
+    .limit(50);
+}
+```
+
+### 4. Client Component (Cases List with React Query)
+
+```tsx
+'use client'
+// app/(authenticated)/features/cases/components/cases-list.tsx
+import { useQuery } from '@tanstack/react-query';
+import { useToast } from '@repo/design-system/components/ui/toast';
+import { getCases } from '../actions/get-cases';
+import { useState } from 'react';
+import { CaseCard } from './case-card';
+
+export function CasesList({ initialCases, tenant }) {
+  const [filters, setFilters] = useState({});
+  const { toast } = useToast();
+  
+  // Use React Query with initial data
+  const { data: cases, isLoading, isError, error } = useQuery({
+    queryKey: ['cases', tenant, filters],
+    queryFn: async () => {
+      const response = await getCases(filters);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    initialData: initialCases,
+    staleTime: 60 * 1000, // 1 minute
+  });
+  
+  // Show error toast if query fails
+  if (isError && error) {
+    toast({
+      variant: "destructive",
+      title: "Error loading cases",
+      description: error.message
+    });
+  }
+  
+  // Filter change handler
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters);
+  };
+  
+  return (
+    <div>
+      <div className="mb-4">
+        <CaseFilters 
+          filters={filters} 
+          onChange={handleFilterChange}
+        />
+      </div>
+      
+      {isLoading ? (
+        <p>Refreshing...</p>
+      ) : cases?.length === 0 ? (
+        <p>No cases found</p>
+      ) : (
+        <div className="grid gap-4">
+          {cases?.map(caseItem => (
+            <CaseCard key={caseItem.id} caseData={caseItem} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### 5. Mutation with Optimistic Updates
+
+```tsx
+'use client'
+// app/(authenticated)/features/cases/components/new-case-form.tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@repo/design-system/components/ui/toast';
+import { createCase } from '../actions/create-case';
+import { useParams, useRouter } from 'next/navigation';
+
+export function NewCaseForm({ onSuccess }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const params = useParams();
+  const tenant = params.tenant;
+  const router = useRouter();
+  
+  const mutation = useMutation({
+    mutationFn: async (formData) => {
+      const response = await createCase(formData);
+      if (response.status === 'error') {
+        throw new Error(response.message);
+      }
+      return response.data;
+    },
+    
+    // Optimistic update
+    onMutate: async (formData) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['cases', tenant]);
+      
+      // Snapshot current cases
+      const previousCases = queryClient.getQueryData(['cases', tenant]);
+      
+      // Create optimistic case
+      const optimisticCase = {
+        id: 'temp-id-' + Date.now(),
+        title: formData.get('title'),
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        // Other defaults...
+      };
+      
+      // Add optimistic case to query data
+      queryClient.setQueryData(['cases', tenant], (old) => {
+        return [optimisticCase, ...(old || [])];
+      });
+      
+      return { previousCases };
+    },
+    
+    // On success
+    onSuccess: (data) => {
+      toast({
+        title: "Case created successfully",
+        description: `Case "${data.title}" has been created.`
+      });
+      
+      // Navigate to new case
+      router.push(`/${tenant}/cases/${data.id}`);
+      
+      if (onSuccess) onSuccess();
+    },
+    
+    // On error, rollback to previous cases
+    onError: (error, _, context) => {
+      queryClient.setQueryData(['cases', tenant], context?.previousCases);
+      
+      toast({
+        variant: "destructive",
+        title: "Failed to create case",
+        description: error.message
+      });
+    },
+    
+    // Always refetch after mutation
+    onSettled: () => {
+      queryClient.invalidateQueries(['cases', tenant]);
+    }
+  });
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    mutation.mutate(new FormData(e.target));
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="title" className="block text-sm font-medium">
+            Case Title
+          </label>
+          <input
+            id="title"
+            name="title"
+            className="mt-1 block w-full rounded-md border p-2"
+            required
+          />
+        </div>
+        
+        <button
+          type="submit"
+          className="bg-primary text-white px-4 py-2 rounded-md"
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? 'Creating...' : 'Create Case'}
+        </button>
+      </div>
+    </form>
+  );
+}
+```
+
+This complete example demonstrates:
+
+1. Server Component fetching initial data
+2. Server Action with authentication, tenant context, and caching
+3. Drizzle database query in a dedicated function
+4. Client Component with React Query for data refreshing
+5. Form submission with optimistic updates and error handling
+6. Toast notifications for user feedback
+
+All pieces work together to provide a seamless user experience while following the architecture principles outlined in this guide.
+```
+
+These sections can be added to your existing data-flow.mdx document to provide more context, examples, and visual guidance to developers. They follow your established principles and enhance the documentation with practical implementation details.
+
+Would you like me to make any adjustments to these additions?
+
+---
+
+_**User**_
+
+@authentication.mdx in this documentation we are missing the utils we created @get-tenant-db-connection.ts @tenant-identifier.ts 
+
+---
+
+_**Assistant**_
+
+<think>I see that the user wants to update the authentication.mdx documentation to include information about the utility functions they've created in `get-tenant-db-connection.ts` and `tenant-identifier.ts`. 
+
+From the attached files, I can see:
+
+1. `apps/app/app/utils/tenant-identifier.ts` - A utility for extracting the tenant identifier from the hostname
+2. `apps/app/app/utils/get-tenant-db-connection.ts` - A utility for getting the tenant database client
+
+These utilities are important parts of the authentication and multi-tenant system that should be documented in the authentication.mdx file.
+
+I'll create a new section for "Tenant Utilities" to add to the authentication.mdx file, describing both of these utilities and how they fit into the overall authentication and tenant routing flow.</think># Updated Authentication Documentation
+
+Let me update your authentication.mdx to include the important tenant utility functions. Here's a new section to add:
+
+## Tenant Utilities
+
+To implement our multi-tenant architecture, we've created specialized utility functions that handle tenant identification and database connections:
+
+### Tenant Identification
+
+The `getTenantIdentifier` utility extracts the tenant identifier from the request hostname:
+
+```typescript
+// apps/app/app/utils/tenant-identifier.ts
+'use server';
+import { env } from '@/env';
+import { headers } from 'next/headers';
+
+/**
+ * Extracts and returns the tenant identifier from the current request's host header.
+ */
+export const getTenantIdentifier = async (): Promise<string> => {
+  const headersList = await headers();
+  const host = headersList.get('host');
+
+  if (!host) {
+    throw new Error('Host header not found');
+  }
+
+  // Handle both production (yourdomain.com) and development (localhost:3000)
+  const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(
+    /^https?:\/\//,
+    ''
+  );
+  const isMainDomain =
+    host === appUrlWithoutProtocol || host === 'localhost:3000';
+
+  if (isMainDomain) {
+    // Handle the case where no subdomain is present, you are on the main domain.
+    return '';
+  }
+
+  // Extract subdomain
+  const subdomain = host.split('.')[0];
+  return subdomain;
+};
+```
+
+This function is critical for all tenant-aware operations as it:
+- Extracts the subdomain from the hostname (e.g., `mg` from `mg.lavel.ai`)
+- Returns an empty string for the main application domain
+- Works in both production and development environments
+
+### Tenant Database Connection
+
+Once we have the tenant identifier, we use `getTenantDbClientUtil` to establish a database connection specific to that tenant:
+
+```typescript
+// apps/app/app/utils/get-tenant-db-connection.ts
+"use server";
+import { createTenantDbClient, type TenantDatabase } from '@repo/database/src/tenant-app/tenant-connection-db';
+import type { DrizzleClient } from '@repo/database/src/tenant-app/tenant-connection-db';
+import { getTenantConnectionUrlAction } from '../actions/users/tenant-actions';
+
+let tenantDbClient: TenantDatabase | null = null;
+
+/**
+ * Utility function to get the tenant database client in Server Actions and Server Components.
+ */
+export async function getTenantDbClientUtil(): Promise<TenantDatabase> {
+  if (tenantDbClient) {
+    return tenantDbClient;
+  }
+
+  const connectionString = await getTenantConnectionUrlAction();
+  if (!connectionString) {
+    throw new Error('Failed to get tenant database connection URL.');
+  }
+
+  tenantDbClient = createTenantDbClient(connectionString);
+  return tenantDbClient;
+}
+```
+
+This utility:
+- Maintains a single database connection for performance
+- Obtains the tenant-specific connection string via a server action
+- Creates a Drizzle client connected to the tenant's database
+- Throws an error if the connection cannot be established
+
+## How Tenant Utilities Fit into the Authentication Flow
+
+<Frame>
+  <img src="/images/architecture/tenant-utils-flow.png" alt="Tenant Utilities Flow" />
+</Frame>
+
+These utilities work together with the authentication system:
+
+1. **Authentication Phase**:
+   - User authenticates via Clerk
+   - Auth middleware validates the session
+
+2. **Tenant Identification**:
+   - `getTenantIdentifier()` extracts the tenant from the hostname
+   - For main domain requests, user is redirected to their tenant subdomain
+
+3. **Database Connection**:
+   - Once on the tenant subdomain, `getTenantDbClientUtil()` establishes the database connection
+   - All data operations use this tenant-specific connection
+
+4. **Request Processing**:
+   - With authentication verified and tenant context established, the request proceeds
+   - All database operations are automatically scoped to the correct tenant
+
+## Usage Example
+
+Here's how these utilities are typically used in a server action:
+
+```typescript
+// Example server action using tenant utilities
+'use server';
+
+import { auth } from '@repo/auth/server';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
+
+export async function getCaseDetails(caseId: string) {
+  try {
+    // Verify authentication
+    const { userId } = await auth();
+    if (!userId) {
+      return { error: 'Unauthorized' };
+    }
+    
+    // Get tenant database connection
+    // Note: The tenant is automatically determined from the request hostname
+    const db = await getTenantDbClientUtil();
+    
+    // Query using tenant-specific database connection
+    const caseData = await db.query.cases.findFirst({
+      where: (cases, { eq }) => eq(cases.id, caseId)
+    });
+    
+    if (!caseData) {
+      return { error: 'Case not found' };
+    }
+    
+    return { data: caseData };
+  } catch (error) {
+    console.error('Error fetching case:', error);
+    return { error: 'Failed to fetch case' };
+  }
+}
+```
+
+This approach ensures that:
+
+1. All requests are properly authenticated
+2. Each tenant's data remains isolated
+3. Database connections are established efficiently
+4. The correct tenant context is maintained throughout the request lifecycle
+
+---
+
+_**User**_
+
+@authentication.mdx ok then go ahead and update the documentation 
+
+---
+
+_**Assistant**_
+
+```diff
+  }
+  ```
++ 
++ ### Tenant Utilities
++ 
++ To implement our multi-tenant architecture, we've created specialized utility functions that handle tenant identification and database connections:
++ 
++ #### Tenant Identification
++ 
++ The `getTenantIdentifier` utility extracts the tenant identifier from the request hostname:
++ 
++ ```typescript
++ // apps/app/app/utils/tenant-identifier.ts
++ 'use server';
++ import { env } from '@/env';
++ import { headers } from 'next/headers';
++ 
++ /**
++  * Extracts and returns the tenant identifier from the current request's host header.
++  */
++ export const getTenantIdentifier = async (): Promise<string> => {
++   const headersList = await headers();
++   const host = headersList.get('host');
++ 
++   if (!host) {
++     throw new Error('Host header not found');
++   }
++ 
++   // Handle both production (yourdomain.com) and development (localhost:3000)
++   const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(
++     /^https?:\/\//,
++     ''
++   );
++   const isMainDomain =
++     host === appUrlWithoutProtocol || host === 'localhost:3000';
++ 
++   if (isMainDomain) {
++     // Handle the case where no subdomain is present, you are on the main domain.
++     return '';
++   }
++ 
++   // Extract subdomain
++   const subdomain = host.split('.')[0];
++   return subdomain;
++ };
++ ```
++ 
++ This function is critical for all tenant-aware operations as it:
++ - Extracts the subdomain from the hostname (e.g., `mg` from `mg.lavel.ai`)
++ - Returns an empty string for the main application domain
++ - Works in both production and development environments
++ 
++ #### Tenant Database Connection
++ 
++ Once we have the tenant identifier, we use `getTenantDbClientUtil` to establish a database connection specific to that tenant:
++ 
++ ```typescript
++ // apps/app/app/utils/get-tenant-db-connection.ts
++ "use server";
++ import { createTenantDbClient, type TenantDatabase } from '@repo/database/src/tenant-app/tenant-connection-db';
++ import type { DrizzleClient } from '@repo/database/src/tenant-app/tenant-connection-db';
++ import { getTenantConnectionUrlAction } from '../actions/users/tenant-actions';
++ 
++ let tenantDbClient: TenantDatabase | null = null;
++ 
++ /**
++  * Utility function to get the tenant database client in Server Actions and Server Components.
++  */
++ export async function getTenantDbClientUtil(): Promise<TenantDatabase> {
++   if (tenantDbClient) {
++     return tenantDbClient;
++   }
++ 
++   const connectionString = await getTenantConnectionUrlAction();
++   if (!connectionString) {
++     throw new Error('Failed to get tenant database connection URL.');
++   }
++ 
++   tenantDbClient = createTenantDbClient(connectionString);
++   return tenantDbClient;
++ }
++ ```
++ 
++ This utility:
++ - Maintains a single database connection for performance
++ - Obtains the tenant-specific connection string via a server action
++ - Creates a Drizzle client connected to the tenant's database
++ - Throws an error if the connection cannot be established
++ 
++ #### How Tenant Utilities Fit into the Authentication Flow
++ 
++ <Frame>
++   <img src="/images/architecture/tenant-utils-flow.png" alt="Tenant Utilities Flow" />
++ </Frame>
++ 
++ These utilities work together with the authentication system:
++ 
++ 1. **Authentication Phase**:
++    - User authenticates via Clerk
++    - Auth middleware validates the session
++ 
++ 2. **Tenant Identification**:
++    - `getTenantIdentifier()` extracts the tenant from the hostname
++    - For main domain requests, user is redirected to their tenant subdomain
++ 
++ 3. **Database Connection**:
++    - Once on the tenant subdomain, `getTenantDbClientUtil()` establishes the database connection
++    - All data operations use this tenant-specific connection
++ 
++ 4. **Request Processing**:
++    - With authentication verified and tenant context established, the request proceeds
++    - All database operations are automatically scoped to the correct tenant
++ 
++ #### Usage Example
++ 
++ Here's how these utilities are typically used in a server action:
++ 
++ ```typescript
++ // Example server action using tenant utilities
++ 'use server';
++ 
++ import { auth } from '@repo/auth/server';
++ import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
++ 
++ export async function getCaseDetails(caseId: string) {
++   try {
++     // Verify authentication
++     const { userId } = await auth();
++     if (!userId) {
++       return { error: 'Unauthorized' };
++     }
++     
++     // Get tenant database connection
++     // Note: The tenant is automatically determined from the request hostname
++     const db = await getTenantDbClientUtil();
++     
++     // Query using tenant-specific database connection
++     const caseData = await db.query.cases.findFirst({
++       where: (cases, { eq }) => eq(cases.id, caseId)
++     });
++     
++     if (!caseData) {
++       return { error: 'Case not found' };
++     }
++     
++     return { data: caseData };
++   } catch (error) {
++     console.error('Error fetching case:', error);
++     return { error: 'Failed to fetch case' };
++   }
++ }
++ ```
++ 
++ This approach ensures that:
++ 
++ 1. All requests are properly authenticated
++ 2. Each tenant's data remains isolated
++ 3. Database connections are established efficiently
++ 4. The correct tenant context is maintained throughout the request lifecycle
+  
+  ## Authentication Flow Sequence
+```
+
+---
+
+_****_
+
+
+
+I've updated the authentication.mdx file to include the tenant utilities section. The documentation now includes:
+
+1. A detailed explanation of the `getTenantIdentifier` utility that extracts tenant information from the hostname
+2. Documentation for the `getTenantDbClientUtil` function that manages tenant-specific database connections
+3. A section explaining how these utilities fit into the overall authentication flow
+4. A practical usage example showing how to use these utilities in a server action
+
+The new content is positioned logically after the "Tenant Routing" section and before the "Authentication Flow Sequence" section, creating a natural flow in the documentation.
+
+Note that you'll need to create the referenced diagram image (`/images/architecture/tenant-utils-flow.png`) to complete the documentation. This diagram should illustrate how the authentication process, tenant identification, and database connection work together.
+
+Is there anything else you'd like me to add or modify in the authentication documentation?
 
 ---
 

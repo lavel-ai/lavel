@@ -1,0 +1,416 @@
+---
+title: 'Server-Side Data Flow'
+description: 'Data flow on the server in the Lavel AI platform'
+---
+
+# Server-Side Data Flow
+
+This document describes how data flows through the server-side components of the Lavel AI platform, focusing on Server Components, Server Actions, and tenant-aware database operations.
+
+## Server Components
+
+Server Components are the entry point for data in our application. They:
+
+1. Fetch initial data using Server Actions
+2. Pass data as props to child components
+3. Handle server-side rendering
+
+### Server Component Data Fetching Pattern
+
+```tsx
+// Example Server Component fetching data
+// apps/app/(authenticated)/[tenant]/cases/page.tsx
+import { getCases } from '../features/cases/actions/get-cases';
+import { CasesList } from '../features/cases/components/cases-list';
+
+export default async function CasesPage({ params }) {
+  // Fetch initial data using Server Action
+  const response = await getCases({});
+  
+  // Handle potential errors
+  if (response.status === 'error') {
+    // Could redirect to error page or show error message
+    console.error(response.message);
+  }
+  
+  // Pass data as props to child components
+  return (
+    <div>
+      <h1>Cases</h1>
+      <CasesList initialCases={response.data || []} />
+    </div>
+  );
+}
+```
+
+### Best Practices for Server Components
+
+1. **Use Server Components for Initial Data**: Fetch data needed for the initial page render in Server Components
+2. **Handle Errors Gracefully**: Implement proper error handling for all data fetching operations
+3. **Use Suspense for Loading States**: Wrap data-dependent components in Suspense for better loading UX
+4. **Pass Only Necessary Data**: Only pass the data that child components need
+5. **Use Server Actions**: Fetch data using Server Actions for proper tenant isolation
+
+## Server Actions
+
+Server Actions are server-side functions that can be called from both Server and Client Components. They:
+
+1. Handle data operations (fetch, create, update, delete)
+2. Implement authentication and authorization
+3. Manage tenant isolation
+4. Process form submissions
+5. Return structured responses
+
+### Server Action Implementation Pattern
+
+```tsx
+// Example Server Action for data fetching
+// apps/app/(authenticated)/features/cases/actions/get-cases.ts
+'use server'
+
+import { auth } from '@repo/auth/server';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
+import { getCasesQuery } from '@repo/database/queries/cases-queries';
+import { normalizeCase } from '@repo/database/utils/normalize/case';
+
+export async function getCases(filters = {}) {
+  try {
+    // 1. Authentication check
+    const { userId } = await auth();
+    if (!userId) {
+      return { 
+        status: 'error', 
+        message: 'Unauthorized' 
+      };
+    }
+    
+    // 2. Get tenant database connection
+    // The tenant is automatically determined from the request hostname
+    const db = await getTenantDbClientUtil();
+    
+    // 3. Map Clerk ID to internal user ID
+    const user = await db.query.users.findFirst({
+      where: (users, { eq }) => eq(users.clerkId, userId)
+    });
+    
+    if (!user) {
+      return { 
+        status: 'error', 
+        message: 'User not found' 
+      };
+    }
+    
+    // 4. Call database query function
+    const cases = await getCasesQuery(db, user.id, filters);
+    
+    // 5. Normalize data before returning
+    const normalizedCases = cases.map(normalizeCase);
+    
+    // 6. Return structured response
+    return { 
+      status: 'success', 
+      data: normalizedCases 
+    };
+  } catch (error) {
+    // 7. Error handling
+    console.error('Error fetching cases:', error);
+    return { 
+      status: 'error', 
+      message: 'Failed to fetch cases' 
+    };
+  }
+}
+```
+
+### Mutation Server Action Pattern
+
+```tsx
+// Example mutation Server Action
+// apps/app/(authenticated)/features/cases/actions/create-case.ts
+'use server'
+
+import { auth } from '@repo/auth/server';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
+import { insertCaseQuery } from '@repo/database/queries/cases-queries';
+import { normalizeCase } from '@repo/database/utils/normalize/case';
+import { revalidatePath } from 'next/cache';
+import { caseSchema } from '../schema';
+
+export async function createCase(formData) {
+  try {
+    // 1. Authentication check
+    const { userId } = await auth();
+    if (!userId) {
+      return { status: 'error', message: 'Unauthorized' };
+    }
+    
+    // 2. Get tenant database connection
+    const db = await getTenantDbClientUtil();
+    
+    // 3. Map Clerk ID to internal user ID
+    const user = await db.query.users.findFirst({
+      where: (users, { eq }) => eq(users.clerkId, userId)
+    });
+    
+    if (!user) {
+      return { status: 'error', message: 'User not found' };
+    }
+    
+    // 4. Parse and validate form data
+    // Convert FormData to a plain object
+    const rawData = Object.fromEntries(formData.entries());
+    
+    // Validate using schema
+    const validationResult = caseSchema.safeParse(rawData);
+    if (!validationResult.success) {
+      return {
+        status: 'error',
+        message: 'Invalid data',
+        errors: validationResult.error.flatten()
+      };
+    }
+    
+    const validData = validationResult.data;
+    
+    // 5. Insert data
+    const newCase = await insertCaseQuery(db, {
+      ...validData,
+      createdBy: user.id
+    });
+    
+    // 6. Revalidate cache
+    revalidatePath(`/${getTenantIdentifier()}/cases`);
+    
+    // 7. Return structured response
+    return { 
+      status: 'success', 
+      data: normalizeCase(newCase) 
+    };
+  } catch (error) {
+    // 8. Error handling
+    console.error('Error creating case:', error);
+    return { 
+      status: 'error', 
+      message: 'Failed to create case' 
+    };
+  }
+}
+```
+
+### Best Practices for Server Actions
+
+1. **Authentication First**: Always check authentication at the beginning of each Server Action
+2. **Structured Responses**: Return consistent response objects with status and data/message
+3. **Error Handling**: Implement comprehensive error handling with proper error messages
+4. **Validation**: Validate input data before processing
+5. **Cache Revalidation**: Revalidate paths or tags after mutations
+6. **Tenant Isolation**: Use tenant-specific database connections
+7. **Data Normalization**: Normalize data before returning it to clients
+
+## Tenant Identification and Routing
+
+Our application uses subdomain-based tenant identification, as detailed in the [Authentication Flow](/architecture/authentication) documentation.
+
+### Subdomain Extraction
+
+The `getTenantIdentifier` utility extracts the tenant identifier from the request hostname:
+
+```typescript
+// apps/app/app/utils/tenant-identifier.ts
+'use server';
+import { env } from '@/env';
+import { headers } from 'next/headers';
+
+export const getTenantIdentifier = async (): Promise<string> => {
+  const headersList = await headers();
+  const host = headersList.get('host');
+
+  if (!host) {
+    throw new Error('Host header not found');
+  }
+
+  // Handle both production (yourdomain.com) and development (localhost:3000)
+  const appUrlWithoutProtocol = env.NEXT_PUBLIC_APP_URL?.replace(
+    /^https?:\/\//,
+    ''
+  );
+  const isMainDomain =
+    host === appUrlWithoutProtocol || host === 'localhost:3000';
+
+  if (isMainDomain) {
+    // Handle the case where no subdomain is present, you are on the main domain.
+    return '';
+  }
+
+  // Extract subdomain
+  const subdomain = host.split('.')[0];
+  return subdomain;
+};
+```
+
+### Tenant Database Connection
+
+Once we have the tenant identifier, we use `getTenantDbClientUtil` to establish a database connection specific to that tenant:
+
+```typescript
+// apps/app/app/utils/get-tenant-db-connection.ts
+"use server";
+import { createTenantDbClient, type TenantDatabase } from '@repo/database/src/tenant-app/tenant-connection-db';
+import { getTenantConnectionUrlAction } from '../actions/users/tenant-actions';
+
+let tenantDbClient: TenantDatabase | null = null;
+
+export async function getTenantDbClientUtil(): Promise<TenantDatabase> {
+  if (tenantDbClient) {
+    return tenantDbClient;
+  }
+
+  const connectionString = await getTenantConnectionUrlAction();
+  if (!connectionString) {
+    throw new Error('Failed to get tenant database connection URL.');
+  }
+
+  tenantDbClient = createTenantDbClient(connectionString);
+  return tenantDbClient;
+}
+```
+
+### Database Query Functions
+
+Database query functions are defined in the database package and accept the tenant database client:
+
+```typescript
+// @repo/database/src/tenant-app/queries/cases-queries.ts
+import { eq, and, desc } from 'drizzle-orm';
+import { cases, caseAssignments } from '../schema';
+
+export async function getCasesQuery(
+  db,
+  userId,
+  filters = {}
+) {
+  // Build query based on filters
+  const query = db.select()
+    .from(cases)
+    .where(eq(cases.createdBy, userId));
+  
+  // Add additional filters
+  if (filters.status) {
+    query.where(eq(cases.status, filters.status));
+  }
+  
+  // Add sorting
+  query.orderBy(desc(cases.createdAt));
+  
+  return query;
+}
+
+export async function insertCaseQuery(
+  db,
+  caseData
+) {
+  const result = await db.insert(cases).values(caseData);
+  const insertedId = result.insertId;
+  
+  // Fetch the inserted case
+  return db.query.cases.findFirst({
+    where: (cases, { eq }) => eq(cases.id, insertedId)
+  });
+}
+```
+
+## Server-Side Caching
+
+Server-side caching is implemented at multiple levels:
+
+### Next.js Server Component Caching
+
+Next.js automatically caches Server Components unless they use dynamic functions:
+
+```tsx
+// Force dynamic rendering for a page that needs fresh data
+export const dynamic = 'force-dynamic';
+
+// Page with default caching behavior
+export default async function CasesPage({ params }) {
+  // This data fetch will be cached according to Next.js defaults
+  const cases = await getCases();
+  return <CasesList cases={cases} />;
+}
+```
+
+### Redis Caching in Server Actions
+
+Server Actions can leverage Redis for expensive operations:
+
+```typescript
+// Server action with Redis caching
+import { redis } from '@repo/cache/redis';
+
+export async function getCases(filters = {}) {
+  try {
+    // Authentication checks...
+    
+    const tenantId = await getTenantIdentifier();
+    
+    // Create cache key based on tenant and filters
+    const cacheKey = `${tenantId}:cases:list:${JSON.stringify(filters)}`;
+    
+    // Try to get from Redis cache first
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return { status: 'success', data: JSON.parse(cached) };
+    }
+    
+    // Fetch data if not in cache...
+    
+    // Cache the results (with 60-second TTL)
+    await redis.set(cacheKey, JSON.stringify(normalizedCases), 'EX', 60);
+    
+    return { status: 'success', data: normalizedCases };
+  } catch (error) {
+    // Error handling...
+  }
+}
+```
+
+### Cache Invalidation
+
+After mutations, invalidate affected cache entries:
+
+```typescript
+// Cache invalidation after mutation
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { redis } from '@repo/cache/redis';
+
+export async function createCase(data) {
+  try {
+    // Create case logic...
+    
+    const tenantId = await getTenantIdentifier();
+    
+    // Invalidate Redis cache
+    await redis.del(`${tenantId}:cases:list:*`);
+    
+    // Revalidate Next.js cache paths
+    revalidatePath(`/${tenantId}/cases`);
+    
+    // Or use tags for more targeted invalidation
+    revalidateTag(`tenant-${tenantId}-cases`);
+    
+    return { status: 'success', data: normalizedCase };
+  } catch (error) {
+    // Error handling...
+  }
+}
+```
+
+## Best Practices
+
+1. **Server Component Data Loading**: Use Server Components for initial data loading to reduce client-side JavaScript
+2. **Structured Server Actions**: Implement consistent patterns for Server Actions with proper error handling
+3. **Tenant Isolation**: Always use `getTenantDbClientUtil()` for database operations
+4. **Type Safety**: Use TypeScript throughout to ensure type safety
+5. **Error Handling**: Implement comprehensive error handling in all Server Actions
+6. **Cache Management**: Use appropriate caching strategies based on data volatility
+7. **Security**: Verify authentication and authorization in every Server Action

@@ -14,34 +14,34 @@
     "seed-reference": "tsx src/tenant-app/seed/seed-reference.ts"
   },
   "dependencies": {
-    "@neondatabase/api-client": "^1.12.0",
+    "@neondatabase/api-client": "^1.13.0",
     "@neondatabase/serverless": "^0.10.4",
     "@t3-oss/env-nextjs": "^0.12.0",
-    "@tanstack/react-query": "^5.66.0",
+    "@tanstack/react-query": "^5.66.11",
     "@types/csv-parse": "^1.2.5",
     "csv-parse": "^5.6.0",
     "dotenv": "^16.4.7",
-    "drizzle-orm": "^0.39.2",
+    "drizzle-orm": "^0.40.0",
     "drizzle-zod": "^0.7.0",
     "postgres": "^3.4.5",
     "server-only": "^0.0.1",
     "ts-node": "^10.9.2",
-    "undici": "^7.3.0",
-    "ws": "^8.18.0",
-    "zod": "^3.24.1"
+    "undici": "^7.4.0",
+    "ws": "^8.18.1",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@repo/testing": "workspace:*",
     "@repo/typescript-config": "workspace:*",
-    "@testing-library/dom": "^10.1.0",
-    "@testing-library/react": "^14.2.1",
-    "@types/node": "22.13.1",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.2.0",
+    "@types/node": "22.13.8",
     "@types/ws": "^8.5.14",
     "bufferutil": "^4.0.9",
-    "drizzle-kit": "^0.30.4",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3",
-    "vitest": "^1.2.2"
+    "drizzle-kit": "^0.30.5",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
   },
   "eslintConfig": {
     "root": true,

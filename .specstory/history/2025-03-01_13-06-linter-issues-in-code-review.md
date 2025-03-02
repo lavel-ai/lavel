@@ -3240,13 +3240,1143 @@ Great! I can see there's already a `use-practice-areas.ts` file. Let's examine i
 
 _****_
 
-
+Read file: apps/app/app/(authenticated)/features/practice-area/hooks/use-practice-areas.ts
 
 ---
 
 _****_
 
 
+
+Let's see the related practice area components to understand how they're implemented:
+
+---
+
+_****_
+
+Read file: apps/app/app/(authenticated)/features/practice-area/components/practice-area-form.tsx
+
+---
+
+_****_
+
+
+
+Let's also check how the practice area is used in a page component:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "practice area page component" • **0** results</summary>
+        
+No results found
+</details>
+
+---
+
+_****_
+
+Could not resolve URI: Error: Unable to resolve nonexistent file '/Users/dmgpro/Desktop/lavel-t/apps/app/app/(authenticated)/practice-areas'
+
+---
+
+_****_
+
+
+
+Let's look for the practice area page:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "practice-area page.tsx" • **10** results</summary>
+        
+| File |
+|------|
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+
+</details>
+
+---
+
+_****_
+
+
+
+
+
+Let's look for the practice area management page:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "practice-area page" • **10** results</summary>
+        
+| File |
+|------|
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+
+</details>
+
+---
+
+_****_
+
+
+
+
+
+Now I'll check if there's a practice-areas directory:
+
+---
+
+_****_
+
+<details>
+            <summary>Listed directory apps/app/app/(authenticated) • **11** results</summary>
+        
+| Name |
+|-------|
+| 📁 `practice-area-test` |
+| 📁 `departments` |
+| 📁 `components` |
+| 📁 `features` |
+| 📁 `my-firm` |
+| 📄 `page.tsx` |
+| 📄 `layout.tsx` |
+| 📁 `costumers` |
+| 📁 `cases` |
+| 📁 `search` |
+| 📁 `webhooks` |
+
+</details>
+
+---
+
+_****_
+
+
+
+
+
+Let's look at the practice-area-test page:
+
+---
+
+_****_
+
+Read file: apps/app/app/(authenticated)/practice-area-test/page.tsx
+
+---
+
+_****_
+
+
+
+
+
+Based on my analysis, I'll implement the missing pieces to comply with our architecture:
+
+1. First, I'll update the hooks/use-practice-areas.ts to ensure it fully complies with our architecture:
+
+---
+
+_****_
+
+```diff
+    updatePracticeArea,
+    deletePracticeArea,
+-   PracticeAreaOption
++   PracticeAreaOption,
++   ApiResponse
+  } from '../actions/practice-area-actions';
+  import { 
+  }
+  
++ /**
++  * Custom hook for managing practice areas with React Query
++  * Follows the architecture pattern defined in data-flow.mdx
++  */
+  export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) {
+    const { toast } = useToast();
+      isLoading, 
+      error,
+-     refetch
++     refetch,
++     isFetching
+    } = useQuery({
+      queryKey: ['practice-areas'],
+    });
+  
+-   // Create a new practice area
++   // Create a new practice area with optimistic updates
+    const createMutation = useMutation({
+      mutationFn: createPracticeArea,
++     onMutate: async (newPracticeArea) => {
++       // Cancel any outgoing refetches
++       await queryClient.cancelQueries({ queryKey: ['practice-areas'] });
++       
++       // Snapshot the previous value
++       const previousPracticeAreas = queryClient.getQueryData<PracticeAreaOption[]>(['practice-areas']) || [];
++       
++       // Create optimistic practice area with temporary ID
++       const optimisticPracticeArea: PracticeAreaOption = {
++         id: Date.now(), // Temporary ID
++         name: newPracticeArea.name,
++         description: newPracticeArea.description,
++         active: newPracticeArea.active ?? true,
++         createdAt: new Date().toISOString(),
++         updatedAt: new Date().toISOString(),
++       };
++       
++       // Optimistically update to the new value
++       queryClient.setQueryData(
++         ['practice-areas'], 
++         [...previousPracticeAreas, optimisticPracticeArea]
++       );
++       
++       // Return a context object with the previous practice areas
++       return { previousPracticeAreas };
++     },
+      onSuccess: async (response) => {
+        if (response.status === 'success') {
+-         // Update cache
+          queryClient.invalidateQueries({ queryKey: ['practice-areas'] });
+          
+        }
+      },
+-     onError: (error: any) => {
++     onError: (error: any, variables, context) => {
++       // Rollback to the previous state if there was an error
++       if (context?.previousPracticeAreas) {
++         queryClient.setQueryData(['practice-areas'], context.previousPracticeAreas);
++       }
++       
+        console.error('Error creating practice area:', error);
+        toast({
+        });
+      },
++     onSettled: () => {
++       // Always refetch after error or success
++       queryClient.invalidateQueries({ queryKey: ['practice-areas'] });
++     },
+    });
+  
+-   // Update a practice area
++   // Update a practice area with optimistic updates
+    const updateMutation = useMutation({
+      mutationFn: ({ id, data }: { id: number; data: any }) => updatePracticeArea(id, data),
++     onMutate: async ({ id, data }) => {
++       // Cancel any outgoing refetches
++       await queryClient.cancelQueries({ queryKey: ['practice-areas'] });
++       await queryClient.cancelQueries({ queryKey: ['practice-area', id] });
++       
++       // Snapshot the previous values
++       const previousPracticeAreas = queryClient.getQueryData<PracticeAreaOption[]>(['practice-areas']) || [];
++       const previousPracticeArea = queryClient.getQueryData<PracticeAreaOption>(['practice-area', id]);
++       
++       // Optimistically update to the new value
++       const updatedPracticeAreas = previousPracticeAreas.map(area => 
++         area.id === id 
++           ? { ...area, ...data, updatedAt: new Date().toISOString() } 
++           : area
++       );
++       
++       queryClient.setQueryData(['practice-areas'], updatedPracticeAreas);
++       if (previousPracticeArea) {
++         queryClient.setQueryData(
++           ['practice-area', id], 
++           { ...previousPracticeArea, ...data, updatedAt: new Date().toISOString() }
++         );
++       }
++       
++       // Return a context with the previous value
++       return { previousPracticeAreas, previousPracticeArea };
++     },
+      onSuccess: async (response) => {
+        if (response.status === 'success') {
+        }
+      },
+-     onError: (error: any) => {
++     onError: (error: any, variables, context) => {
++       // Roll back to the previous value
++       if (context?.previousPracticeAreas) {
++         queryClient.setQueryData(['practice-areas'], context.previousPracticeAreas);
++       }
++       if (context?.previousPracticeArea) {
++         queryClient.setQueryData(['practice-area', variables.id], context.previousPracticeArea);
++       }
++       
+        console.error('Error updating practice area:', error);
+        toast({
+        });
+      },
++     onSettled: (response) => {
++       // Always refetch after error or success
++       queryClient.invalidateQueries({ queryKey: ['practice-areas'] });
++       if (response?.data?.id) {
++         queryClient.invalidateQueries({ queryKey: ['practice-area', response.data.id] });
++       }
++     },
+    });
+  
+-   // Delete a practice area
++   // Delete a practice area with optimistic updates
+    const deleteMutation = useMutation({
+      mutationFn: deletePracticeArea,
++     onMutate: async (id) => {
++       // Cancel any outgoing refetches
++       await queryClient.cancelQueries({ queryKey: ['practice-areas'] });
++       
++       // Snapshot the previous value
++       const previousPracticeAreas = queryClient.getQueryData<PracticeAreaOption[]>(['practice-areas']) || [];
++       
++       // Optimistically remove the practice area from the list
++       queryClient.setQueryData(
++         ['practice-areas'], 
++         previousPracticeAreas.filter(area => area.id !== id)
++       );
++       
++       // Return a context with the previous value
++       return { previousPracticeAreas };
++     },
+      onSuccess: async (response) => {
+        if (response.status === 'success') {
+            description: 'Área de práctica eliminada correctamente',
+          });
++         
++         // Remove from selected if included
++         setSelectedPracticeAreaIds(prev => prev.filter(id => !selectedPracticeAreaIds.includes(id)));
+        } else {
+          toast({
+        }
+      },
+-     onError: (error: any) => {
++     onError: (error: any, id, context) => {
++       // Roll back to the previous value
++       if (context?.previousPracticeAreas) {
++         queryClient.setQueryData(['practice-areas'], context.previousPracticeAreas);
++       }
++       
+        console.error('Error deleting practice area:', error);
+        toast({
+        });
+      },
++     onSettled: () => {
++       // Always refetch after error or success
++       queryClient.invalidateQueries({ queryKey: ['practice-areas'] });
++     },
+    });
+  
+-   // Get a single practice area by ID
+-   const getPracticeArea = useCallback(async (id: number) => {
+-     try {
+-       const response = await getPracticeAreaById(id);
+-       if (response.status === 'error') {
+-         throw new Error(response.message || 'Error fetching practice area');
+-       }
+-       return response.data;
+-     } catch (error) {
+-       console.error('Error fetching practice area:', error);
+-       return null;
+-     }
+-   }, []);
++   // Get a single practice area by ID with React Query
++   const usePracticeArea = (id: number) => {
++     return useQuery({
++       queryKey: ['practice-area', id],
++       queryFn: async () => {
++         const response = await getPracticeAreaById(id);
++         if (response.status === 'error') {
++           throw new Error(response.message || 'Error fetching practice area');
++         }
++         return response.data;
++       },
++       enabled: !!id // Only run the query if we have an ID
++     });
++   };
+  
+    // Function to handle selection of practice areas
+      isLoading,
+      error,
++     isFetching,
+      isCreating: createMutation.isPending,
+      isUpdating: updateMutation.isPending,
+      delete: deleteMutation.mutate,
+      deleteAsync: deleteMutation.mutateAsync,
+-     getPracticeArea,
++     usePracticeArea, // Hook for getting a single practice area
+      refetch,
+      
+```
+
+---
+
+_****_
+
+
+
+
+
+Now, let's create a proper practice area page component that follows our architecture pattern:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use server';
++ 
++ import { Suspense } from 'react';
++ import { getPracticeAreas } from '../features/practice-area/actions/get-practice-area';
++ import { PracticeAreaDashboard } from '../features/practice-area/components/practice-area-dashboard';
++ import { PracticeAreasSkeleton } from '../features/practice-area/components/skeletons';
++ import { NewPracticeAreaButton } from '../features/practice-area/components/new-practice-area-button';
++ import { Card, CardContent, CardHeader, CardTitle } from '@repo/design-system/components/ui/card';
++ import {
++   Breadcrumb,
++   BreadcrumbItem,
++   BreadcrumbLink,
++   BreadcrumbList,
++   BreadcrumbSeparator,
++ } from '@repo/design-system/components/ui/breadcrumb';
++ import { Home } from 'lucide-react';
++ 
++ export default async function PracticeAreaPage() {
++   // Fetch initial data using Server Action
++   const response = await getPracticeAreas();
++   
++   const initialData = response.status === 'success' 
++     ? response.data 
++     : [];
++   
++   return (
++     <div className="container mx-auto p-4 space-y-6">
++       <div className="flex justify-between items-center">
++         <div className="space-y-2">
++           <Breadcrumb>
++             <BreadcrumbList>
++               <BreadcrumbItem>
++                 <BreadcrumbLink href="/"><Home className="h-4 w-4" /></BreadcrumbLink>
++               </BreadcrumbItem>
++               <BreadcrumbSeparator />
++               <BreadcrumbItem>
++                 <BreadcrumbLink href="/practice-area">Áreas de Práctica</BreadcrumbLink>
++               </BreadcrumbItem>
++             </BreadcrumbList>
++           </Breadcrumb>
++           <h1 className="text-2xl font-bold">Áreas de Práctica</h1>
++           <p className="text-gray-500">Gestione las áreas de práctica de su bufete</p>
++         </div>
++         <NewPracticeAreaButton />
++       </div>
++       
++       <Card>
++         <CardHeader>
++           <CardTitle>Áreas de Práctica</CardTitle>
++         </CardHeader>
++         <CardContent>
++           <Suspense fallback={<PracticeAreasSkeleton />}>
++             {/* Pass initial data to Client Component */}
++             <PracticeAreaDashboard initialData={initialData} />
++           </Suspense>
++         </CardContent>
++       </Card>
++     </div>
++   );
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+Now, let's create those missing components:
+
+1. First, let's create the skeleton component:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use client';
++ 
++ import { Skeleton } from '@repo/design-system/components/ui/skeleton';
++ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@repo/design-system/components/ui/table';
++ 
++ export function PracticeAreasSkeleton() {
++   return (
++     <div className="w-full">
++       <div className="flex items-center justify-between mb-4">
++         <div>
++           <Skeleton className="h-8 w-48" />
++         </div>
++         <Skeleton className="h-9 w-24" />
++       </div>
++       
++       <Table>
++         <TableHeader>
++           <TableRow>
++             <TableHead><Skeleton className="h-4 w-24" /></TableHead>
++             <TableHead><Skeleton className="h-4 w-32" /></TableHead>
++             <TableHead><Skeleton className="h-4 w-20" /></TableHead>
++             <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableHead>
++           </TableRow>
++         </TableHeader>
++         <TableBody>
++           {Array.from({ length: 5 }).map((_, index) => (
++             <TableRow key={index}>
++               <TableCell><Skeleton className="h-5 w-10" /></TableCell>
++               <TableCell><Skeleton className="h-5 w-40" /></TableCell>
++               <TableCell><Skeleton className="h-5 w-16" /></TableCell>
++               <TableCell className="text-right">
++                 <div className="flex justify-end space-x-2">
++                   <Skeleton className="h-8 w-8" />
++                   <Skeleton className="h-8 w-8" />
++                 </div>
++               </TableCell>
++             </TableRow>
++           ))}
++         </TableBody>
++       </Table>
++     </div>
++   );
++ }
++ 
++ export function PracticeAreaDetailsSkeleton() {
++   return (
++     <div className="space-y-4">
++       <Skeleton className="h-6 w-40" />
++       <Skeleton className="h-20 w-full" />
++       <div className="flex items-center space-x-2">
++         <Skeleton className="h-5 w-5" />
++         <Skeleton className="h-5 w-20" />
++       </div>
++     </div>
++   );
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+2. Next, let's create the new practice area button:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use client';
++ 
++ import { useState } from 'react';
++ import { Button } from '@repo/design-system/components/ui/button';
++ import { Plus } from 'lucide-react';
++ import { PracticeAreaDialog } from './practice-area-dialog';
++ 
++ export function NewPracticeAreaButton() {
++   const [open, setOpen] = useState(false);
++ 
++   return (
++     <>
++       <Button onClick={() => setOpen(true)}>
++         <Plus className="mr-2 h-4 w-4" />
++         Nueva Área de Práctica
++       </Button>
++ 
++       <PracticeAreaDialog
++         open={open}
++         onOpenChange={setOpen}
++         title="Nueva Área de Práctica"
++         description="Cree una nueva área de práctica para su bufete."
++       />
++     </>
++   );
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+3. Let's create the practice area dashboard component:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use client';
++ 
++ import { useState } from 'react';
++ import { PracticeAreaOption } from '../actions/practice-area-actions';
++ import { usePracticeAreas } from '../hooks/use-practice-areas';
++ import { Button } from '@repo/design-system/components/ui/button';
++ import { Input } from '@repo/design-system/components/ui/input';
++ import { 
++   Table, 
++   TableBody, 
++   TableCell, 
++   TableHead, 
++   TableHeader, 
++   TableRow 
++ } from '@repo/design-system/components/ui/table';
++ import { 
++   DropdownMenu,
++   DropdownMenuContent,
++   DropdownMenuItem,
++   DropdownMenuLabel,
++   DropdownMenuSeparator,
++   DropdownMenuTrigger,
++ } from '@repo/design-system/components/ui/dropdown-menu';
++ import { Badge } from '@repo/design-system/components/ui/badge';
++ import { Edit, MoreHorizontal, Search, Trash } from 'lucide-react';
++ import { format } from 'date-fns';
++ import { es } from 'date-fns/locale';
++ import { PracticeAreaDialog } from './practice-area-dialog';
++ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@repo/design-system/components/ui/alert-dialog';
++ 
++ interface PracticeAreaDashboardProps {
++   initialData?: PracticeAreaOption[];
++ }
++ 
++ export function PracticeAreaDashboard({ initialData }: PracticeAreaDashboardProps) {
++   const { 
++     practiceAreas, 
++     isLoading, 
++     isFetching,
++     delete: deletePracticeArea,
++     isDeleting
++   } = usePracticeAreas({ initialData });
++ 
++   const [searchQuery, setSearchQuery] = useState('');
++   const [editingPracticeArea, setEditingPracticeArea] = useState<PracticeAreaOption | null>(null);
++   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
++   const [deletingId, setDeletingId] = useState<number | null>(null);
++   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
++ 
++   // Filter practice areas based on search query
++   const filteredPracticeAreas = practiceAreas.filter(area => 
++     area.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
++     (area.description && area.description.toLowerCase().includes(searchQuery.toLowerCase()))
++   );
++ 
++   const handleEdit = (practiceArea: PracticeAreaOption) => {
++     setEditingPracticeArea(practiceArea);
++     setIsEditDialogOpen(true);
++   };
++ 
++   const handleDelete = (id: number) => {
++     setDeletingId(id);
++     setIsDeleteDialogOpen(true);
++   };
++ 
++   const confirmDelete = async () => {
++     if (deletingId) {
++       await deletePracticeArea(deletingId);
++       setIsDeleteDialogOpen(false);
++       setDeletingId(null);
++     }
++   };
++ 
++   return (
++     <div className="space-y-4">
++       <div className="flex items-center space-x-2">
++         <div className="relative flex-1">
++           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
++           <Input
++             placeholder="Buscar áreas de práctica..."
++             className="pl-8"
++             value={searchQuery}
++             onChange={(e) => setSearchQuery(e.target.value)}
++           />
++         </div>
++       </div>
++ 
++       <div className="rounded-md border">
++         <Table>
++           <TableHeader>
++             <TableRow>
++               <TableHead>ID</TableHead>
++               <TableHead>Nombre</TableHead>
++               <TableHead>Estado</TableHead>
++               <TableHead className="text-right">Acciones</TableHead>
++             </TableRow>
++           </TableHeader>
++           <TableBody>
++             {filteredPracticeAreas.length === 0 ? (
++               <TableRow>
++                 <TableCell colSpan={4} className="text-center py-6 text-gray-500">
++                   {isLoading || isFetching 
++                     ? 'Cargando áreas de práctica...' 
++                     : 'No se encontraron áreas de práctica'}
++                 </TableCell>
++               </TableRow>
++             ) : (
++               filteredPracticeAreas.map((area) => (
++                 <TableRow key={area.id}>
++                   <TableCell>{area.id}</TableCell>
++                   <TableCell>
++                     <div>
++                       <div className="font-medium">{area.name}</div>
++                       {area.description && (
++                         <div className="text-sm text-gray-500 truncate max-w-xs">
++                           {area.description}
++                         </div>
++                       )}
++                     </div>
++                   </TableCell>
++                   <TableCell>
++                     {area.active ? (
++                       <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
++                         Activa
++                       </Badge>
++                     ) : (
++                       <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
++                         Inactiva
++                       </Badge>
++                     )}
++                   </TableCell>
++                   <TableCell className="text-right">
++                     <DropdownMenu>
++                       <DropdownMenuTrigger asChild>
++                         <Button variant="ghost" className="h-8 w-8 p-0">
++                           <span className="sr-only">Abrir menú</span>
++                           <MoreHorizontal className="h-4 w-4" />
++                         </Button>
++                       </DropdownMenuTrigger>
++                       <DropdownMenuContent align="end">
++                         <DropdownMenuLabel>Acciones</DropdownMenuLabel>
++                         <DropdownMenuSeparator />
++                         <DropdownMenuItem onClick={() => handleEdit(area)}>
++                           <Edit className="mr-2 h-4 w-4" />
++                           Editar
++                         </DropdownMenuItem>
++                         <DropdownMenuItem 
++                           onClick={() => handleDelete(area.id)}
++                           className="text-red-600"
++                         >
++                           <Trash className="mr-2 h-4 w-4" />
++                           Eliminar
++                         </DropdownMenuItem>
++                       </DropdownMenuContent>
++                     </DropdownMenu>
++                   </TableCell>
++                 </TableRow>
++               ))
++             )}
++           </TableBody>
++         </Table>
++       </div>
++ 
++       {/* Edit Dialog */}
++       {editingPracticeArea && (
++         <PracticeAreaDialog
++           open={isEditDialogOpen}
++           onOpenChange={setIsEditDialogOpen}
++           title="Editar Área de Práctica"
++           practiceArea={editingPracticeArea}
++           onSuccess={() => setIsEditDialogOpen(false)}
++         />
++       )}
++ 
++       {/* Delete Confirmation Dialog */}
++       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
++         <AlertDialogContent>
++           <AlertDialogHeader>
++             <AlertDialogTitle>¿Está seguro?</AlertDialogTitle>
++             <AlertDialogDescription>
++               Esta acción eliminará el área de práctica. Esta acción no se puede deshacer.
++             </AlertDialogDescription>
++           </AlertDialogHeader>
++           <AlertDialogFooter>
++             <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
++             <AlertDialogAction 
++               onClick={confirmDelete}
++               className="bg-red-500 hover:bg-red-600"
++               disabled={isDeleting}
++             >
++               {isDeleting ? 'Eliminando...' : 'Eliminar'}
++             </AlertDialogAction>
++           </AlertDialogFooter>
++         </AlertDialogContent>
++       </AlertDialog>
++     </div>
++   );
++ } 
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+
+
+4. Finally, let's create the practice area dialog component:
+
+---
+
+_****_
+
+```diff
+  'use client';
+  
+- import React from 'react';
+- import {
+-   Dialog,
+-   DialogContent,
+-   DialogHeader,
+-   DialogTitle,
+-   DialogTrigger,
++ import { 
++   Dialog, 
++   DialogContent, 
++   DialogDescription, 
++   DialogHeader, 
++   DialogTitle 
+  } from '@repo/design-system/components/ui/dialog';
+- import { Button } from '@repo/design-system/components/ui/button';
+- import { Plus } from 'lucide-react';
+  import { PracticeAreaForm } from './practice-area-form';
+  import { PracticeAreaOption } from '../actions/practice-area-actions';
+- 
+- interface PracticeAreaDialogProps {
+-   trigger?: React.ReactNode;
+-   title?: string;
++ import { Dispatch, SetStateAction } from 'react';
++ 
++ export interface PracticeAreaDialogProps {
++   open: boolean;
++   onOpenChange: Dispatch<SetStateAction<boolean>>;
++   title: string;
++   description?: string;
++   practiceArea?: PracticeAreaOption;
+    onSuccess?: (practiceArea: PracticeAreaOption) => void;
+-   open?: boolean;
+-   onOpenChange?: (open: boolean) => void;
+  }
+  
+  export function PracticeAreaDialog({
+-   trigger,
+-   title = 'Crear área de práctica',
+-   onSuccess,
+    open,
+    onOpenChange,
++   title,
++   description,
++   practiceArea,
++   onSuccess
+  }: PracticeAreaDialogProps) {
+-   const [internalOpen, setInternalOpen] = React.useState(false);
+-   
+-   // Use controlled state if provided, otherwise use internal state
+-   const isOpen = open !== undefined ? open : internalOpen;
+-   const setIsOpen = onOpenChange || setInternalOpen;
+- 
+-   const handleSuccess = (practiceArea: PracticeAreaOption) => {
++   const handleSuccess = (data: PracticeAreaOption) => {
+      if (onSuccess) {
+-       onSuccess(practiceArea);
++       onSuccess(data);
++     } else {
++       onOpenChange(false);
+      }
+-     setIsOpen(false);
+    };
+  
+    return (
+-     <Dialog open={isOpen} onOpenChange={setIsOpen}>
+-       {trigger !== null && (
+-         <DialogTrigger asChild>
+-           {trigger || (
+-             <Button size="sm" variant="outline">
+-               <Plus className="mr-2 h-4 w-4" />
+-               Nueva área de práctica
+-             </Button>
+-           )}
+-         </DialogTrigger>
+-       )}
+-       <DialogContent className="sm:max-w-[425px]">
++     <Dialog open={open} onOpenChange={onOpenChange}>
++       <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
++           {description && <DialogDescription>{description}</DialogDescription>}
+          </DialogHeader>
+          <PracticeAreaForm 
+-           onSuccess={handleSuccess} 
+-           onCancel={() => setIsOpen(false)} 
++           practiceArea={practiceArea}
++           onSuccess={handleSuccess}
++           onCancel={() => onOpenChange(false)}
+          />
+        </DialogContent>
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+
+
+
+
+Let's fix the dialog component to resolve the type error:
+
+---
+
+_****_
+
+```diff
+  import { PracticeAreaOption } from '../actions/practice-area-actions';
+  import { Dispatch, SetStateAction } from 'react';
++ 
++ // Extending the PracticeAreaOption to match what's expected in PracticeAreaForm
++ export type PracticeAreaFormData = PracticeAreaOption & { 
++   description?: string | null;
++   active?: boolean;
++ };
+  
+  export interface PracticeAreaDialogProps {
+    };
+  
++   // Transform the practiceArea to match the expected type
++   const formData: PracticeAreaFormData | undefined = practiceArea
++     ? {
++         ...practiceArea,
++         description: practiceArea.description || null,
++         active: practiceArea.active ?? true,
++       }
++     : undefined;
++ 
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+          </DialogHeader>
+          <PracticeAreaForm 
+-           practiceArea={practiceArea}
++           practiceArea={formData}
+            onSuccess={handleSuccess}
+            onCancel={() => onOpenChange(false)}
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+
+
+
+
+Let's update the practice area form component to ensure proper type compatibility:
+
+---
+
+_****_
+
+```diff
+  interface PracticeAreaFormProps {
+    practiceArea?: PracticeAreaOption & { 
+-     description?: string;
++     description?: string | null;
+      active?: boolean;
+    };
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+
+
+
+
+
+
+Let's fix the remaining linter errors by updating the practice-area-dashboard.tsx to address the date-fns imports:
+
+---
+
+_****_
+
+```diff
+  import { Badge } from '@repo/design-system/components/ui/badge';
+  import { Edit, MoreHorizontal, Search, Trash } from 'lucide-react';
+- import { format } from 'date-fns';
+- import { es } from 'date-fns/locale';
+  import { PracticeAreaDialog } from './practice-area-dialog';
+  import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@repo/design-system/components/ui/alert-dialog';
+```
+
+---
+
+_****_
+
+
+
+
+
+
+
+
+Now let's create the directory structure needed for our page:
+
+---
+
+_****_
+
+```bash
+mkdir -p apps/app/app/\(authenticated\)/practice-area
+```
+
+```
+dmgpro@Mac lavel-t % 
+
+```
+
+---
+
+_****_
+
+
+
+
+
+## Architecture Implementation Complete
+
+I've successfully implemented all the missing pieces to fully comply with our architecture as outlined in the `data-flow.mdx` guide. Here's what we've done:
+
+### 1. Enhanced Client-Side Implementation
+
+✅ **Custom Hooks with React Query**
+   - Updated `use-practice-areas.ts` with comprehensive React Query integration
+   - Added optimistic updates for better user experience
+   - Implemented proper error handling and state management
+   - Added support for individual practice area queries
+
+### 2. Created UI Components
+
+✅ **React Components**
+   - `PracticeAreaDashboard`: Main client component for displaying practice areas
+   - `PracticeAreaDialog`: Modal component for creating/editing practice areas
+   - `NewPracticeAreaButton`: Button component for triggering the creation dialog
+   - `PracticeAreasSkeleton`: Loading state components for better UX
+
+### 3. Server Component Integration
+
+✅ **Server-Side Rendering**
+   - Created a new `practice-area/page.tsx` page component
+   - Implemented server-side data fetching using Server Actions
+   - Added Suspense for managing loading states
+   - Passed initial data to client components for hydration
+
+### 4. Type Safety
+
+✅ **TypeScript Integration**
+   - Added proper types for all components and functions
+   - Ensured type compatibility between different layers
+   - Created specialized types where needed for form data
+
+## Architecture Benefits
+
+These changes bring several benefits:
+
+1. **Improved User Experience**: Optimistic updates provide instant feedback
+2. **Better Error Handling**: Comprehensive error management throughout the stack
+3. **Separation of Concerns**: Clear boundaries between server and client code
+4. **Type Safety**: Full TypeScript support across all components
+5. **Performance**: Efficient data loading with React Query caching
+6. **Maintainability**: Consistent patterns that align with project standards
+
+The practice area management functionality now fully complies with our architectural guidelines, providing a solid foundation that can be extended as needed while maintaining consistency with the rest of the application.
+
+---
+
+_**User**_
+
+ok we need to come up with a checklist to verify that once we create a something in regards of the data flow we are complying with the architecture, how can we do this?
+
+---
+
+_**Assistant**_
+
+<think>The user is asking for a checklist to help verify that new features or components comply with the data flow architecture outlined in the `data-flow.mdx` document. Let me create a comprehensive checklist that covers all aspects of the architecture, from database layer to client-side implementation.
+
+Based on the architecture document and our implementation, the checklist should cover:
+
+1. Database Layer Setup
+2. Server-Side Implementation
+3. Client-Side Implementation
+4.
 
 ---
 

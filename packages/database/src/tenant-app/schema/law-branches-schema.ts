@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, timestamp, varchar, unique, pgSchema, pgTable } from "drizzle-orm/pg-core";
+import { integer, timestamp, varchar, unique, pgSchema, pgTable, boolean, uuid } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { courthouses } from "./courthouses-schema";
 import { trialTypes } from "./trial-types-schema";
@@ -10,8 +10,14 @@ import { teamPracticeAreas } from "./team-practice-areas-schema";
 export const lawBranches = pgTable("law_branches", {
 	id: integer("id").primaryKey().generatedByDefaultAsIdentity({ name: "law_branches_id2_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
 	name: varchar("name").notNull(),
+	description: varchar("description", { length: 500 }),
+	active: boolean("active").default(true).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	deletedAt: timestamp("deleted_at", { withTimezone: true, mode: 'string' }),
+	createdBy: uuid("created_by").notNull(),
+	updatedBy: uuid("updated_by").notNull(),
+	deletedBy: uuid("deleted_by"),
 },
 (table) => {
 	return {

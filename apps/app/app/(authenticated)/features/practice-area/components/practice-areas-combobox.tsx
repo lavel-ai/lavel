@@ -1,7 +1,7 @@
 'use client';
 
-import { Check, ChevronsUpDown, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Check, ChevronsUpDown, Plus, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Badge } from '@repo/design-system/components/ui/badge';
 import { Button } from '@repo/design-system/components/ui/button';
 import {
@@ -10,6 +10,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandSeparator,
 } from '@repo/design-system/components/ui/command';
 import {
   Popover,
@@ -17,13 +18,20 @@ import {
   PopoverTrigger,
 } from '@repo/design-system/components/ui/popover';
 import { cn } from '@repo/design-system/lib/utils';
-import { getPracticeAreas, PracticeAreaOption } from '../actions/practice-area-actions';
+import { useToast } from '@repo/design-system/hooks/use-toast';
+import { PracticeAreaOption } from '../actions/practice-area-actions';
+import { PracticeAreaDialog } from './practice-area-dialog';
+import { usePracticeAreas } from '../hooks/use-practice-areas';
 
 interface PracticeAreasComboboxProps {
   value: number[];
   onChange: (value: number[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  allowCreate?: boolean;
+  practiceAreas: PracticeAreaOption[];
+  isLoading: boolean;
+  onCreateSuccess?: () => Promise<void>;
 }
 
 export function PracticeAreasCombobox({
@@ -31,29 +39,28 @@ export function PracticeAreasCombobox({
   onChange,
   placeholder = 'Seleccionar áreas de práctica',
   disabled = false,
+  allowCreate = true,
+  practiceAreas = [],
+  isLoading = false,
+  onCreateSuccess,
 }: PracticeAreasComboboxProps) {
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [practiceAreas, setPracticeAreas] = useState<PracticeAreaOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-
+  
+  // Debug logs to track practice areas data
   useEffect(() => {
-    const fetchPracticeAreas = async () => {
-      try {
-        setLoading(true);
-        const response = await getPracticeAreas();
-        if (response.status === 'success' && response.data) {
-          setPracticeAreas(response.data);
-        }
-      } catch (error) {
-        // Handle error silently
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPracticeAreas();
-  }, []);
+    console.log('PracticeAreasCombobox received data:', practiceAreas);
+    if (practiceAreas && practiceAreas.length > 0) {
+      console.log('First practice area:', practiceAreas[0]);
+    } else {
+      console.log('No practice areas received');
+    }
+  }, [practiceAreas]);
+  
+  // Only use the createAndSelect function from the hook
+  const { createAndSelect } = usePracticeAreas();
 
   // Filter practice areas based on search query
   const filteredPracticeAreas = practiceAreas.filter((area) => {
@@ -80,8 +87,72 @@ export function PracticeAreasCombobox({
     onChange(value.filter(itemId => itemId !== id));
   };
 
+  // Handle when a new practice area is created
+  const handlePracticeAreaCreated = async (practiceArea: PracticeAreaOption) => {
+    // Select the newly created area
+    onChange([...value, practiceArea.id]);
+    
+    // Refresh the list of practice areas
+    if (onCreateSuccess) {
+      await onCreateSuccess();
+    }
+    
+    // Clear the search
+    setSearchQuery('');
+  };
+
+  // Open the create dialog
+  const handleOpenCreateDialog = () => {
+    setDialogOpen(true);
+  };
+
+  // Quick create from search term
+  const handleQuickCreate = async () => {
+    if (!searchQuery.trim()) return;
+    
+    try {
+      const response = await createAndSelect({ 
+        name: searchQuery.trim(),
+        active: true
+      });
+      
+      if (response.status === 'success' && response.data) {
+        // Add to selected areas
+        onChange([...value, response.data.id]);
+        
+        // Close popover and clear search
+        setOpen(false);
+        setSearchQuery('');
+        
+        // Refresh practice areas
+        if (onCreateSuccess) {
+          await onCreateSuccess();
+        }
+        
+        toast({
+          title: 'Área creada',
+          description: `Se ha creado "${searchQuery.trim()}" correctamente`,
+        });
+      }
+    } catch (error) {
+      console.error('Error creating practice area:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo crear el área de práctica',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="space-y-2">
+      {/* Debug display */}
+      <div className="p-2 bg-amber-100 rounded mb-2 text-xs">
+        <div>Debug: Received {practiceAreas?.length || 0} practice areas</div>
+        <div>First area: {practiceAreas?.[0]?.name || 'None'}</div>
+        <div>IsLoading: {isLoading ? 'Yes' : 'No'}</div>
+      </div>
+      
       <div className="flex flex-wrap gap-1">
         {selectedPracticeAreas.map((area) => (
           <Badge 
@@ -102,6 +173,14 @@ export function PracticeAreasCombobox({
           </Badge>
         ))}
       </div>
+
+      {/* Practice Area Dialog for creating new practice areas */}
+      <PracticeAreaDialog 
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSuccess={handlePracticeAreaCreated}
+        trigger={null} // We'll manually control the dialog
+      />
 
       <Popover open={open} onOpenChange={setOpen} modal={true}>
         <PopoverTrigger asChild>
@@ -141,7 +220,7 @@ export function PracticeAreasCombobox({
               value={searchQuery}
               onValueChange={setSearchQuery}
             />
-            {loading ? (
+            {isLoading ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
                 Cargando áreas de práctica...
               </div>
@@ -149,6 +228,18 @@ export function PracticeAreasCombobox({
               <>
                 <CommandEmpty className="py-6 text-center text-sm">
                   No se encontraron áreas de práctica.
+                  {allowCreate && searchQuery.trim() && (
+                    <div className="mt-2">
+                      <Button 
+                        size="sm" 
+                        className="mx-auto"
+                        onClick={handleQuickCreate}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Crear "{searchQuery.trim()}"
+                      </Button>
+                    </div>
+                  )}
                 </CommandEmpty>
                 <CommandGroup>
                   {filteredPracticeAreas.map((area) => (
@@ -176,6 +267,21 @@ export function PracticeAreasCombobox({
                     </CommandItem>
                   ))}
                 </CommandGroup>
+                
+                {allowCreate && (
+                  <>
+                    <CommandSeparator />
+                    <CommandGroup>
+                      <CommandItem
+                        onSelect={handleOpenCreateDialog}
+                        className="py-2"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Crear nueva área de práctica
+                      </CommandItem>
+                    </CommandGroup>
+                  </>
+                )}
               </>
             )}
           </Command>
@@ -183,4 +289,4 @@ export function PracticeAreasCombobox({
       </Popover>
     </div>
   );
-} 
+}

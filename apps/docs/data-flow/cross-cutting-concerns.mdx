@@ -1,89 +1,111 @@
 ---
 title: 'Cross-Cutting Concerns'
-description: 'Cross-cutting concerns in the data flow architecture'
+description: 'Cross-cutting concerns in the data flow architecture with React 19'
 ---
 
 # Cross-Cutting Concerns
 
-This document describes how cross-cutting concerns like authentication, error handling, analytics, feature flags, and data normalization are integrated into the data flow architecture of the Lavel AI platform.
+This document describes how cross-cutting concerns like authentication, error handling, analytics, feature flags, and data normalization are integrated into the data flow architecture of the Lavel AI platform, updated for React 19 features.
 
 ## Authentication and Authorization
 
-Authentication is handled by Clerk, with a middleware that:
+Authentication in our application is handled by Clerk, with middleware that enforces tenant isolation. With React 19, we've streamlined our authentication patterns to reduce boilerplate and improve consistency.
 
-1. Verifies the user's authentication status
-2. Maps Clerk user IDs to internal user IDs
-3. Enforces tenant isolation
+### Authentication Utility
 
-### Authentication Flow
+To standardize authentication in Server Actions and reduce repetitive code, we use a withAuth utility:
 
-As detailed in the [Authentication Flow](/architecture/authentication) documentation, our system follows this sequence:
-
-<Steps>
-  <Step title="Initial Access">
-    User accesses the application at lavel.ai
-  </Step>
-  <Step title="Authentication">
-    Auth middleware checks for valid session
-  </Step>
-  <Step title="Session Validation">
-    If not authenticated, user is redirected to Clerk sign-in
-  </Step>
-  <Step title="Organization Lookup">
-    After authentication, system fetches user's organization
-  </Step>
-  <Step title="Tenant Routing">
-    User is redirected to organization-specific subdomain (e.g., mg.lavel.ai)
-  </Step>
-  <Step title="Onboarding Fallback">
-    If no organization exists, user is directed to onboarding
-  </Step>
-</Steps>
-
-### Server Action Authentication
-
-Every Server Action starts with authentication verification:
-
-```typescript
-'use server'
-
+```tsx
+// utils/with-auth.ts
 import { auth } from '@repo/auth/server';
+import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
+import { captureError } from '@repo/observability/error';
 
-export async function serverAction(data) {
-  // 1. Authentication check
-  const { userId } = await auth();
-  if (!userId) {
-    return { status: 'error', message: 'Unauthorized' };
+export function withAuth(actionFn) {
+  return async function(...args) {
+    try {
+      // Authentication check
+      const { userId } = await auth();
+      if (!userId) {
+        return { status: 'error', message: 'Unauthorized' };
+      }
+      
+      // Get tenant database connection
+      const db = await getTenantDbClientUtil();
+      
+      // Map Clerk ID to internal user ID
+      const user = await db.query.users.findFirst({
+        where: (users, { eq }) => eq(users.clerkId, userId)
+      });
+      
+      if (!user) {
+        return { status: 'error', message: 'User not found' };
+      }
+      
+      // Call the actual action with the authenticated context
+      return actionFn({ db, user, userId }, ...args);
+    } catch (error) {
+      captureError(error, {
+        context: 'serverAction',
+        args: JSON.stringify(args)
+      });
+      
+      return { status: 'error', message: 'An error occurred' };
+    }
+  };
+}
+```
+
+This utility wraps Server Actions to handle authentication, tenant isolation, and error tracking, providing a clean and consistent pattern.
+
+### Usage in Server Actions
+
+Using the withAuth utility makes Server Actions more concise and focused on their specific business logic:
+
+```tsx
+// Before: repetitive authentication code
+export async function createCase(data) {
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return { status: 'error', message: 'Unauthorized' };
+    }
+    
+    const db = await getTenantDbClientUtil();
+    
+    const user = await db.query.users.findFirst({
+      where: (users, { eq }) => eq(users.clerkId, userId)
+    });
+    
+    if (!user) {
+      return { status: 'error', message: 'User not found' };
+    }
+    
+    // Actual business logic...
+  } catch (error) {
+    // Error handling...
   }
-  
-  // 2. Get tenant database connection
-  const db = await getTenantDbClientUtil();
-  
-  // 3. Map Clerk ID to internal user ID
-  const user = await db.query.users.findFirst({
-    where: (users, { eq }) => eq(users.clerkId, userId)
+}
+
+// After: clean and focused
+export const createCase = withAuth(async ({ db, user }, data) => {
+  // Business logic only, no authentication boilerplate
+  const result = await db.insert(cases).values({
+    ...data,
+    createdBy: user.id
   });
   
-  if (!user) {
-    return { status: 'error', message: 'User not found' };
-  }
-  
-  // 4. Proceed with the action using user.id for database operations
-  // ...
-}
+  return { status: 'success', data: result };
+});
 ```
 
 ### Authorization in Data Operations
 
 Beyond authentication, we implement authorization checks to ensure users can only access and modify data they're permitted to:
 
-```typescript
+```tsx
 // Example of authorization check in a Server Action
-export async function updateCase(caseId, data) {
-  // Authentication check...
-  
-  // Get tenant DB and internal user ID...
-  
+export const updateCase = withAuth(async ({ db, user }, caseId, data) => {
   // Authorization check
   const userCase = await db.query.cases.findFirst({
     where: (cases, { and, eq, or }) => and(
@@ -106,107 +128,78 @@ export async function updateCase(caseId, data) {
   }
   
   // Proceed with the update...
-}
+});
 ```
 
-## Error Handling and Tracking
+## Error Handling with React 19
 
-Our application implements comprehensive error handling as detailed in the [Error Tracking Architecture](/architecture/error-tracking) documentation.
+React 19 simplifies error handling through integration with Actions, useActionState, and more comprehensive error reporting.
 
-### Server-Side Error Handling
+### Error Handling in Server Actions
 
-Server Actions implement standardized error handling with observability integration:
-
-```typescript
-// Example Server Action with error handling
-'use server'
-
-import { captureError } from '@repo/observability/error';
-
-export async function serverAction(data) {
-  try {
-    // Implementation
-    return { status: 'success', data: result };
-  } catch (error) {
-    // Capture error with context
-    captureError(error, {
-      type: 'server_action_error',
-      action: 'serverAction',
-      data
-    });
-    
-    return { 
-      status: 'error', 
-      message: 'An error occurred',
-      traceId: error.traceId || undefined
-    };
-  }
-}
-```
-
-### Client-Side Error Handling
-
-Client components use React Error Boundaries and React Query error states:
+Server Actions can return error information directly for display in forms:
 
 ```tsx
-// Example of Error Boundary usage
-import { ErrorBoundary } from '@repo/observability/error-boundary';
+// Server Action with error handling for useActionState
+export const createEntity = withAuth(async ({ db, user }, prevState, formData) => {
+  try {
+    // Validation
+    const validationResult = entitySchema.safeParse(Object.fromEntries(formData.entries()));
+    if (!validationResult.success) {
+      // Return validation errors directly - works with useActionState
+      return validationResult.error.flatten().formErrors.join(', ');
+    }
+    
+    // Database operations...
+    
+    // Return null for success
+    return null;
+  } catch (error) {
+    // Return error message string
+    return `Failed to create entity: ${error.message}`;
+  }
+});
+```
 
-function ParentComponent() {
+### Client-Side Error Handling with useActionState
+
+The useActionState hook simplifies error handling in forms:
+
+```tsx
+function EntityForm() {
+  // useActionState returns the error state directly
+  const [error, formAction, isPending] = useActionState(createEntity, null);
+  
   return (
-    <ErrorBoundary 
-      component="DataGrid"
-      fallback={<ErrorFallback />}
-    >
-      <DataGrid />
-    </ErrorBoundary>
+    <form action={formAction}>
+      {/* Form fields */}
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Creating...' : 'Create Entity'}
+      </button>
+      
+      {/* Display the error returned from the Server Action */}
+      {error && (
+        <div className="error-message">
+          {error}
+        </div>
+      )}
+    </form>
   );
 }
-
-// Example of React Query error handling
-function DataDisplay() {
-  const { data, error, isError } = useQuery({
-    queryKey: ['data'],
-    queryFn: fetchData
-  });
-  
-  if (isError) {
-    captureError(error, {
-      component: 'DataDisplay',
-      context: 'data fetching'
-    });
-    
-    return <div>Error loading data: {error.message}</div>;
-  }
-  
-  // Render data
-}
 ```
 
-### Error Boundary Component
+### Error Boundaries with React 19
 
-Our application uses a React Error Boundary to capture frontend errors:
+React 19 improves error reporting for Error Boundaries with better error details:
 
 ```tsx
-// packages/observability/error-boundary.tsx
-import React from 'react';
-import * as Sentry from '@sentry/nextjs';
+'use client'
+import { Component } from 'react';
 
-interface ErrorBoundaryProps {
-  fallback?: React.ReactNode;
-  component?: string;
-  children: React.ReactNode;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error?: Error;
-}
-
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -214,29 +207,24 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error, errorInfo) {
-    Sentry.captureException(error, {
-      extra: {
-        componentStack: errorInfo.componentStack,
-        component: this.props.component
-      }
+    // Log error to error tracking service
+    captureError(error, {
+      component: this.props.componentName,
+      errorInfo
     });
-    
-    console.error('Component error:', error);
   }
 
   render() {
     if (this.state.hasError) {
-      return this.props.fallback || (
-        <div className="error-boundary-fallback">
+      if (this.props.fallback) {
+        return this.props.fallback(this.state.error);
+      }
+      
+      return (
+        <div className="error-boundary">
           <h2>Something went wrong</h2>
-          <p>
-            The application encountered an error. Please try again or contact support
-            if the problem persists.
-          </p>
-          <button 
-            onClick={() => this.setState({ hasError: false })}
-            className="btn btn-primary"
-          >
+          <p className="error-message">{this.state.error?.message}</p>
+          <button onClick={() => this.setState({ hasError: false })}>
             Try again
           </button>
         </div>
@@ -248,795 +236,414 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 }
 ```
 
-### API Error Handling
+## Analytics Integration with React 19
 
-API routes use a standardized error handler:
-
-```typescript
-import { handleApiError } from '@repo/observability/api-error-handler';
-
-export async function GET(req) {
-  try {
-    // Implementation
-    return Response.json(data);
-  } catch (error) {
-    return handleApiError(error, {
-      route: 'GET /api/data',
-      // Additional context
-    });
-  }
-}
-```
-
-## Analytics Integration
-
-Our data flow integrates with the [Analytics Architecture](/architecture/analytics) to track user behavior and application usage.
+Our analytics system can be integrated with React 19's Actions to track important user interactions.
 
 ### Event Tracking in Server Actions
 
 Server Actions can track significant events:
 
-```typescript
-'use server'
-
-import { trackEvent } from '@repo/analytics/events';
-
-export async function createEntity(data) {
+```tsx
+// Server Action with analytics tracking
+export const createCase = withAuth(async ({ db, user }, prevState, formData) => {
   try {
-    // Create entity
+    // Extract form data
+    const data = Object.fromEntries(formData.entries());
     
-    // Track the event
-    trackEvent('entity_created', {
-      entityType: 'case',
-      hasAttachments: data.attachments?.length > 0
+    // Database operations...
+    const result = await db.insert(cases).values({
+      ...data,
+      createdBy: user.id
     });
     
-    return { status: 'success', data: entity };
+    // Track the successful creation
+    trackEvent('case_created', {
+      userId: user.id,
+      caseId: result.id,
+      caseType: data.type
+    });
+    
+    return null; // success
   } catch (error) {
-    // Error handling
+    // Track the error
+    trackEvent('case_creation_failed', {
+      userId: user.id,
+      error: error.message
+    });
+    
+    return `Failed to create case: ${error.message}`;
   }
-}
+});
 ```
 
-### Component-Level Analytics
+### Form Tracking with useFormStatus
 
-Components use the `useAnalytics` hook for tracking:
+The useFormStatus hook helps with tracking form submissions:
 
 ```tsx
 'use client'
+import { useFormStatus } from 'react-dom';
+import { trackEvent } from '@repo/analytics/tracking';
 
-import { useAnalytics } from '@repo/analytics/use-analytics';
-
-function CaseForm() {
-  const { trackComponentFormSubmission } = useAnalytics('CaseForm');
+function SubmitButton({ formName }) {
+  const { pending, data } = useFormStatus();
   
-  const handleSubmit = async (data) => {
-    // Process form submission
-    await createCase(data);
-    
-    // Track the event
-    trackComponentFormSubmission('case_creation', {
-      case_type: data.type,
-      has_documents: data.documents.length > 0
-    });
-  };
-  
-  // Component JSX...
-}
-```
-
-### Page View Tracking
-
-Page views are tracked automatically through the AnalyticsProvider:
-
-```tsx
-// From packages/analytics/provider.tsx
-export function AnalyticsProvider({ children, apiKey }) {
-  const router = useRouter();
-  
-  // Track page views
+  // Track when form is submitted
   useEffect(() => {
-    const handleRouteChange = (url) => {
-      trackPageView(url);
-    };
-    
-    router.events.on('routeChangeComplete', handleRouteChange);
-    
-    return () => {
-      router.events.off('routeChangeComplete', handleRouteChange);
-    };
-  }, [router.events]);
-  
-  // Provider JSX...
-}
-```
-
-### Standard Event Tracking
-
-To ensure consistent tracking, we define standard events:
-
-```typescript
-// packages/analytics/events.ts
-import { trackEvent } from './tracker';
-
-// UI interaction events
-export const trackButtonClick = (buttonName: string, properties = {}) => {
-  trackEvent('button_clicked', { button_name: buttonName, ...properties });
-};
-
-export const trackFormSubmission = (formName: string, properties = {}) => {
-  trackEvent('form_submitted', { form_name: formName, ...properties });
-};
-
-// Feature usage events
-export const trackFeatureUsage = (featureName: string, properties = {}) => {
-  trackEvent('feature_used', { feature_name: featureName, ...properties });
-};
-
-// Business events
-export const trackCaseCreated = (caseId: string, properties = {}) => {
-  trackEvent('case_created', { case_id: caseId, ...properties });
-};
-```
-
-## Feature Flag Integration
-
-Our data flow integrates with the [Feature Flags Architecture](/architecture/flags) for controlled feature rollout.
-
-### Server-Side Feature Flags
-
-Server Components and Server Actions can check feature flags:
-
-```typescript
-// Server Component with feature flag
-import { evaluateFlag } from '@repo/feature-flags/evaluator';
-
-export default async function EntityPage({ params }) {
-  const tenantId = await getTenantIdentifier();
-  
-  const showNewFeature = evaluateFlag('new-entity-ui', {
-    tenantId,
-    environment: process.env.NODE_ENV
-  });
+    if (pending) {
+      trackEvent('form_submission_started', {
+        formName,
+        formData: Object.fromEntries(data?.entries() || [])
+      });
+    }
+  }, [pending, data, formName]);
   
   return (
-    <div>
-      {showNewFeature ? (
-        <NewEntityUI />
-      ) : (
-        <LegacyEntityUI />
-      )}
+    <button type="submit" disabled={pending}>
+      {pending ? 'Submitting...' : 'Submit'}
+    </button>
+  );
+}
+```
+
+## Feature Flags Integration
+
+Feature flags integration can be simplified with React 19's Context features:
+
+```tsx
+'use client'
+import { createContext, use } from 'react';
+
+// Create the context
+const FeatureFlagContext = createContext(null);
+
+// Provider component
+function FeatureFlagProvider({ children, flags = {} }) {
+  return (
+    <FeatureFlagContext value={flags}>
+      {children}
+    </FeatureFlagContext>
+  );
+}
+
+// Consumer hook
+function useFeatureFlag(flagName) {
+  const flags = use(FeatureFlagContext);
+  return flags[flagName] || false;
+}
+
+// Usage in components
+function NewFeature() {
+  const isEnabled = useFeatureFlag('new-feature');
+  
+  if (!isEnabled) {
+    return null;
+  }
+  
+  return (
+    <div className="new-feature">
+      {/* New feature implementation */}
     </div>
   );
 }
 ```
 
-### Client-Side Feature Flags
+## Document Metadata and Resource Management
 
-Client Components use the `useFeatureFlag` hook:
+React 19 adds native support for document metadata, which simplifies managing titles, meta tags, and links:
+
+### Document Metadata in Components
 
 ```tsx
-'use client'
+function CaseDetailPage({ caseData }) {
+  return (
+    <div>
+      <title>{caseData.title} | Lavel AI</title>
+      <meta name="description" content={`Details for case: ${caseData.title}`} />
+      <link rel="canonical" href={`https://lavel.ai/cases/${caseData.id}`} />
+      
+      <h1>{caseData.title}</h1>
+      {/* Case details */}
+    </div>
+  );
+}
+```
 
-import { useFeatureFlag } from '@repo/feature-flags/use-feature-flag';
+### Stylesheet Management
 
-function EntityList() {
-  const showBulkActions = useFeatureFlag('entity-bulk-actions');
+React 19 allows managing stylesheets with precedence to control loading order:
+
+```tsx
+function FeaturedCases() {
+  return (
+    <div>
+      <link rel="stylesheet" href="/base.css" precedence="default" />
+      <link rel="stylesheet" href="/featured.css" precedence="high" />
+      
+      <h2>Featured Cases</h2>
+      {/* Featured cases content */}
+    </div>
+  );
+}
+```
+
+### Resource Preloading
+
+React 19 provides APIs for optimized resource loading:
+
+```tsx
+import { prefetchDNS, preconnect, preload, preinit } from 'react-dom';
+
+function Dashboard() {
+  // Preload resources
+  preload('/fonts/lavel-sans.woff2', { as: 'font' });
+  preinit('/scripts/dashboard-charts.js', { as: 'script' });
+  preconnect('https://api.analytics.com');
+  prefetchDNS('https://cdn.reports.com');
   
   return (
     <div>
-      {showBulkActions && (
-        <div className="bulk-actions">
-          <Button>Bulk Assign</Button>
-          <Button>Bulk Archive</Button>
+      {/* Dashboard content */}
+    </div>
+  );
+}
+```
+
+## Data Normalization Integration
+
+Our data normalization pipeline can be integrated with React 19's form handling:
+
+### Form Handling with Normalization Feedback
+
+```tsx
+'use client'
+import { useActionState } from 'react';
+import { createClient } from '../actions/create-client';
+
+function ClientForm() {
+  // useActionState can return complex data
+  const [result, formAction, isPending] = useActionState(createClient, { 
+    error: null, 
+    changes: [] 
+  });
+  
+  return (
+    <form action={formAction}>
+      {/* Form fields */}
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Creating...' : 'Create Client'}
+      </button>
+      
+      {result.error && (
+        <div className="error-message">
+          {result.error}
         </div>
       )}
       
-      {/* Rest of component */}
-    </div>
+      {/* Display normalization changes */}
+      {result.changes.length > 0 && (
+        <div className="normalization-feedback">
+          <p>The following fields were automatically formatted:</p>
+          <ul>
+            {result.changes.map((change, index) => (
+              <li key={index}>
+                <strong>{change.field}:</strong> {change.original} → {change.normalized}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </form>
   );
 }
 ```
 
-### Flag Evaluation Engine
-
-The flag evaluation engine determines whether a flag is enabled based on context:
-
-```typescript
-// packages/feature-flags/evaluator.ts
-export function evaluateFlag(
-  flagName: string, 
-  context: {
-    userId?: string;
-    tenantId?: string;
-    environment: 'development' | 'staging' | 'production';
-  }
-): boolean {
-  const flag = featureFlags[flagName];
-  
-  if (!flag) {
-    return false;
-  }
-  
-  // Check environment-specific override
-  if (flag.environments && flag.environments[context.environment] !== undefined) {
-    return flag.environments[context.environment];
-  }
-  
-  // Check user percentage rollout if applicable
-  if (flag.rolloutPercentage !== undefined && context.userId) {
-    const userHash = hashString(context.userId);
-    const userPercentile = userHash % 100;
-    return userPercentile < flag.rolloutPercentage;
-  }
-  
-  // Check tenant override if applicable
-  if (flag.tenantOverrides && context.tenantId) {
-    if (flag.tenantOverrides[context.tenantId] !== undefined) {
-      return flag.tenantOverrides[context.tenantId];
-    }
-  }
-  
-  // Fall back to default value
-  return flag.defaultValue;
-}
-```
-
-## Data Normalization Integration
-
-Our data flow integrates with the [Data Normalization Architecture](/architecture/normalization) to ensure data quality and consistency.
-
-### Schema Registry
-
-Server Actions use the schema registry for validation:
-
-```typescript
-'use server'
-
-import { schemaRegistry } from '@repo/schema/registry';
-
-export async function createEntity(data) {
-  try {
-    // Get schema from registry
-    const entitySchema = schemaRegistry.get('entity');
-    
-    // Validate and normalize data
-    const result = entitySchema.safeParse(data);
-    
-    if (!result.success) {
-      return { 
-        status: 'error', 
-        message: 'Invalid data',
-        errors: result.error.flatten()
-      };
-    }
-    
-    // Process validated data
-    const normalizedData = result.data;
-    
-    // Database operations with normalized data
-    
-    return { status: 'success', data: entity };
-  } catch (error) {
-    // Error handling
-  }
-}
-```
-
-### Transform Pipeline
-
-For complex normalization, the transform pipeline orchestrates the progression of data through each stage of the normalization process:
-
-```typescript
-'use server'
-
-import { entityPipeline } from '@repo/schema/pipeline/entity-pipeline';
-
-export async function createEntityWithPipeline(data, context = {}) {
-  try {
-    // Process through pipeline
-    const pipelineResult = await entityPipeline.process(data, context);
-    
-    // Check for pipeline errors
-    if (pipelineResult.errors.length > 0) {
-      return {
-        status: 'error',
-        message: 'Validation failed',
-        errors: pipelineResult.errors
-      };
-    }
-    
-    // Use normalized data
-    const normalizedData = pipelineResult.result;
-    
-    // Database operations with normalized data
-    
-    return { 
-      status: 'success', 
-      data: entity,
-      feedback: pipelineResult.changes
-    };
-  } catch (error) {
-    // Error handling
-  }
-}
-```
-
-### Resilient Normalizer
-
-The Resilient Normalizer provides error recovery strategies:
-
-```typescript
-const resilientNormalizer = new ResilientNormalizer({
-  strategy: 'use-default', // Options: 'reject', 'use-default', 'use-partial', 'use-original'
-  defaultValues: { name: 'Default Team Name', members: [] },
-  logErrors: true
-});
-
-// Using the resilient normalizer
-const result = await resilientNormalizer.normalize(teamSchema, inputData);
-```
-
-### Data Quality Monitoring
-
-When returning data to clients, ensure it's normalized:
-
-```typescript
-'use server'
-
-import { normalizeEntity } from '@repo/database/utils/normalize/entity';
-
-export async function getEntities(filters = {}) {
-  try {
-    // Fetch entities from database
-    const entities = await getEntitiesQuery(tenantDb, filters);
-    
-    // Normalize entities before returning to client
-    const normalizedEntities = entities.map(normalizeEntity);
-    
-    return { status: 'success', data: normalizedEntities };
-  } catch (error) {
-    // Error handling
-  }
-}
-```
-
-## Caching Integration
-
-The data flow architecture integrates with our caching strategy at multiple levels:
-
-### Server Component Caching
-
-Next.js automatically caches Server Components unless they use dynamic functions:
-
-```typescript
-// Force dynamic rendering for a page that needs fresh data
-export const dynamic = 'force-dynamic';
-
-// Page with default caching behavior
-export default async function CasesPage({ params }) {
-  // This data fetch will be cached according to Next.js defaults
-  const cases = await getCases(params.tenant);
-  return <CasesList cases={cases} />;
-}
-```
-
-### React Query Cache
-
-Client Components use React Query for data management with appropriate caching settings:
-
-```typescript
-// Custom hook with tenant-aware caching
-export function useCasesList(filters = {}) {
-  // Get tenant from URL (using next/navigation)
-  const params = useParams();
-  const tenant = params.tenant;
-  
-  return useQuery({
-    queryKey: ['cases', tenant, filters],
-    queryFn: async () => {
-      const response = await getCases(filters);
-      if (response.status === 'error') {
-        throw new Error(response.message);
-      }
-      return response.data;
-    },
-    staleTime: 60 * 1000, // 1 minute - adjust based on data volatility
-    enabled: !!tenant,
-  });
-}
-```
-
-### Redis Cache in Server Actions
-
-Server Actions can leverage Redis for expensive operations:
-
-```typescript
-// Server action with Redis caching
-export async function getCases(filters = {}) {
-  try {
-    const { userId } = await auth();
-    if (!userId) {
-      return { status: 'error', message: 'Unauthorized' };
-    }
-    
-    // Get tenant from hostname
-    const tenantId = getTenantFromRequest();
-    if (!tenantId) {
-      return { status: 'error', message: 'Invalid tenant' };
-    }
-    
-    // Create cache key based on tenant and filters
-    const cacheKey = `${tenantId}:cases:list:${JSON.stringify(filters)}`;
-    
-    // Try to get from Redis cache first
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return { status: 'success', data: JSON.parse(cached) };
-    }
-    
-    // If not in cache, fetch from database
-    const tenantDb = await getTenantDbClientUtil(tenantId);
-    const internalUserId = await getInternalUserId(userId);
-    
-    // Call the query function with tenant DB client
-    const cases = await getCasesQuery(tenantDb, internalUserId, filters);
-    
-    // Normalize the results
-    const normalizedCases = cases.map(normalizeCase);
-    
-    // Cache the results (with 60-second TTL)
-    await redis.set(cacheKey, JSON.stringify(normalizedCases), 'EX', 60);
-    
-    return { status: 'success', data: normalizedCases };
-  } catch (error) {
-    console.error('Error fetching cases:', error);
-    return { 
-      status: 'error', 
-      message: 'Failed to fetch cases'
-    };
-  }
-}
-```
-
-## Centralized Data Access Hooks
-
-A critical aspect of our architecture is centralizing data access through custom hooks. This approach:
-
-1. **Prevents Duplicate Queries**: Ensures multiple components don't trigger the same data fetches
-2. **Standardizes Data Access**: Provides a consistent API for all components
-3. **Encapsulates Caching Logic**: Centralizes caching and invalidation strategies
-4. **Improves Component Reusability**: Components focus on presentation, not data fetching
-
-### Entity-Specific Hooks
-
-We create dedicated hooks for each entity type:
-
-```typescript
-// hooks/useCases.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCases, createCase, updateCase, deleteCase } from '../actions/cases';
-import { useTenant } from './useTenant';
-
-export function useCases(filters = {}) {
-  const { tenant } = useTenant();
-  const queryClient = useQueryClient();
-  
-  // Query for fetching cases
-  const query = useQuery({
-    queryKey: ['cases', tenant?.id, filters],
-    queryFn: () => getCases(filters),
-    enabled: !!tenant?.id,
-  });
-  
-  // Mutation for creating cases
-  const createMutation = useMutation({
-    mutationFn: createCase,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant?.id] });
-    },
-  });
-  
-  // Mutation for updating cases
-  const updateMutation = useMutation({
-    mutationFn: updateCase,
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant?.id] });
-      queryClient.invalidateQueries({ queryKey: ['case', tenant?.id, variables.id] });
-    },
-  });
-  
-  // Mutation for deleting cases
-  const deleteMutation = useMutation({
-    mutationFn: deleteCase,
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant?.id] });
-      queryClient.setQueryData(['case', tenant?.id, id], null);
-    },
-  });
-  
-  return {
-    // Query properties
-    cases: query.data,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    
-    // Mutations
-    createCase: createMutation.mutate,
-    updateCase: updateMutation.mutate,
-    deleteCase: deleteMutation.mutate,
-    
-    // Mutation states
-    isCreating: createMutation.isPending,
-    isUpdating: updateMutation.isPending,
-    isDeleting: deleteMutation.isPending,
-  };
-}
-```
-
-### Single Case Hook
-
-For accessing individual entities, we create dedicated hooks:
-
-```typescript
-// hooks/useCase.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCase, updateCase, deleteCase } from '../actions/cases';
-import { useTenant } from './useTenant';
-
-export function useCase(id) {
-  const { tenant } = useTenant();
-  const queryClient = useQueryClient();
-  
-  const query = useQuery({
-    queryKey: ['case', tenant?.id, id],
-    queryFn: () => getCase(id),
-    enabled: !!tenant?.id && !!id,
-  });
-  
-  const updateMutation = useMutation({
-    mutationFn: (data) => updateCase(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['case', tenant?.id, id] });
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant?.id] });
-    },
-  });
-  
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteCase(id),
-    onSuccess: () => {
-      queryClient.setQueryData(['case', tenant?.id, id], null);
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant?.id] });
-      
-      // Could redirect here if needed
-    },
-  });
-  
-  return {
-    case: query.data,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    
-    updateCase: updateMutation.mutate,
-    deleteCase: deleteMutation.mutate,
-    
-    isUpdating: updateMutation.isPending,
-    isDeleting: deleteMutation.isPending,
-  };
-}
-```
-
-### Component Usage of Centralized Hooks
-
-Components use these hooks instead of making direct Server Action calls:
+### Server Action with Normalization
 
 ```tsx
-'use client'
-// Example component using centralized data hook
-function CaseList() {
-  const { cases, isLoading, error, deleteCase } = useCases();
-  
-  if (isLoading) {
-    return <LoadingSkeleton />;
-  }
-  
-  if (error) {
-    return <ErrorMessage error={error} />;
-  }
-  
-  return (
-    <ul>
-      {cases.map(caseItem => (
-        <li key={caseItem.id}>
-          {caseItem.title}
-          <button onClick={() => deleteCase(caseItem.id)}>Delete</button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-```
-
-### Compound Entity Hooks
-
-For more complex scenarios involving multiple related entities, we create compound hooks:
-
-```typescript
-// hooks/useCaseWithDocuments.ts
-import { useQuery } from '@tanstack/react-query';
-import { getCase } from '../actions/cases';
-import { getDocumentsForCase } from '../actions/documents';
-import { useTenant } from './useTenant';
-
-export function useCaseWithDocuments(caseId) {
-  const { tenant } = useTenant();
-  
-  // Query for the case
-  const caseQuery = useQuery({
-    queryKey: ['case', tenant?.id, caseId],
-    queryFn: () => getCase(caseId),
-    enabled: !!tenant?.id && !!caseId,
-  });
-  
-  // Query for the case documents, depends on case query success
-  const documentsQuery = useQuery({
-    queryKey: ['case-documents', tenant?.id, caseId],
-    queryFn: () => getDocumentsForCase(caseId),
-    enabled: !!tenant?.id && !!caseId && !caseQuery.isLoading && !caseQuery.isError,
-  });
-  
-  return {
-    case: caseQuery.data,
-    documents: documentsQuery.data || [],
-    isLoading: caseQuery.isLoading || documentsQuery.isLoading,
-    isCaseLoading: caseQuery.isLoading,
-    isDocumentsLoading: documentsQuery.isLoading,
-    error: caseQuery.error || documentsQuery.error,
-  };
-}
-```
-
-### Benefits of Centralized Data Hooks
-
-This approach provides several key benefits:
-
-1. **Single Source of Truth**: Data is fetched once and shared among components
-2. **Optimized Network Requests**: React Query's deduplication prevents redundant calls
-3. **Consistent Loading and Error States**: All components get the same loading and error behavior
-4. **Simplified Components**: Components focus on UI, not data fetching logistics
-5. **Coordinated Cache Invalidation**: Related cache entries are invalidated together
-6. **Type Safety**: TypeScript ensures consistent data structures
-## Data Normalization Integration
-
-Our data flow integrates with the [Data Normalization Architecture](/architecture/normalization) to ensure data quality and consistency across all inputs.
-
-### Normalization Pipeline
-
-The data normalization pipeline consists of four stages:
-
-1. **Sanitization**: Cleans input data to remove potentially harmful content
-2. **Normalization**: Standardizes data formats (e.g., phone numbers, emails, names)
-3. **Validation**: Enforces schema constraints and business rules
-4. **Data Quality Monitoring**: Tracks and reports on data quality metrics
-
-### Server Action Integration
-
-Server Actions are the primary point of integration with the normalization pipeline:
-
-```typescript
-// Example Server Action with normalization pipeline
-'use server'
-
-import { clientPipeline } from '@repo/schema/pipeline/client-pipeline';
-
-export async function createClient(formData) {
+// Server Action with normalization pipeline
+export const createClient = withAuth(async ({ db, user }, prevState, formData) => {
   try {
-    // Authentication and tenant DB setup...
-    
-    // Extract raw data from form
+    // Extract form data
     const rawData = Object.fromEntries(formData.entries());
     
     // Process through normalization pipeline
-    const pipelineResult = await clientPipeline.process(rawData, {
-      userId: user.id,
-      source: 'client-form'
-    });
+    const pipelineResult = await clientPipeline.process(rawData);
     
     // Check for normalization/validation errors
     if (pipelineResult.errors && pipelineResult.errors.length > 0) {
-      return {
-        status: 'error',
-        message: 'Invalid data',
-        errors: pipelineResult.errors
+      return { 
+        error: pipelineResult.errors.join(', '),
+        changes: [] 
       };
     }
     
     // Use normalized data for database operations
     const normalizedData = pipelineResult.result;
+    const result = await db.insert(clients).values({
+      ...normalizedData,
+      createdBy: user.id
+    });
     
     // Return normalization changes for user feedback
     return { 
-      status: 'success', 
-      data: result,
+      error: null,
       changes: pipelineResult.changes
     };
   } catch (error) {
-    // Error handling...
-  }
-}
-```
-
-### Client-Side Feedback
-
-Client components can display feedback about normalization changes to users:
-
-```tsx
-// Example showing normalization changes
-{normalizationChanges.length > 0 && (
-  <div className="bg-blue-50 p-3 rounded text-sm">
-    <p className="font-medium">Data was automatically formatted:</p>
-    <ul className="list-disc pl-5 mt-1">
-      {normalizationChanges.map((change, index) => (
-        <li key={index}>{change.field}: {change.original} → {change.normalized}</li>
-      ))}
-    </ul>
-  </div>
-)}
-```
-
-### Resilient Error Handling
-
-The normalization pipeline includes built-in resilience strategies to handle problematic data:
-
-- **use-default**: Use predefined default values for invalid fields
-- **use-partial**: Keep valid fields and discard invalid ones
-- **use-original**: Retain original data if normalization fails
-- **reject**: Reject the entire operation if any field is invalid
-
-This resilience is configured when defining pipelines:
-
-```typescript
-const clientPipeline = createTransformPipeline({
-  name: 'clientPipeline',
-  stages: [sanitizeStage, normalizeStage, validateStage, monitorStage],
-  resilienceOptions: {
-    strategy: 'use-partial', // Default strategy
-    logErrors: true
+    return { 
+      error: `Failed to create client: ${error.message}`,
+      changes: [] 
+    };
   }
 });
 ```
 
-### Form Components and Normalization
+## Integration of Cross-Cutting Concerns
 
-For optimal user experience, form input components can perform client-side normalization as the user types:
+All these cross-cutting concerns work together in a complete example:
 
 ```tsx
-// Example input component with live normalization
-function PhoneInput({ value, onChange }) {
-  // Format phone number as user types
-  const handleChange = (e) => {
-    const rawValue = e.target.value;
-    const formatted = formatPhoneNumber(rawValue); // Client-side normalization
-    onChange(formatted);
+'use client'
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { useOptimistic } from 'react';
+import { createCase } from '../actions/create-case';
+import { trackEvent } from '@repo/analytics/tracking';
+import { use } from 'react';
+import { FeatureFlagContext } from '../context/feature-flags';
+
+function CaseForm({ initialData = {} }) {
+  // Feature flag check
+  const flags = use(FeatureFlagContext);
+  const showAdvancedFields = flags['advanced-case-fields'];
+  
+  // Form state management with useActionState
+  const [result, formAction, isPending] = useActionState(createCase, { 
+    error: null, 
+    changes: [] 
+  });
+  
+  // Optimistic UI for immediate feedback
+  const [optimisticResult, updateOptimisticResult] = useOptimistic(null);
+  
+  // Handle form submission
+  const handleSubmit = async (formData) => {
+    // Track form submission
+    trackEvent('case_form_submitted');
+    
+    // Extract form data
+    const data = Object.fromEntries(formData.entries());
+    
+    // Update optimistically
+    updateOptimisticResult({
+      title: data.title,
+      status: 'draft',
+      createdAt: new Date().toISOString()
+    });
+    
+    // Submit form using the action
+    // (formAction will be called automatically)
   };
   
   return (
-    <input
-      type="tel"
-      value={value}
-      onChange={handleChange}
-      className="input"
-    />
+    <div>
+      {/* Document metadata */}
+      <title>Create New Case | Lavel AI</title>
+      
+      {/* Form with action */}
+      <form action={formAction} onSubmit={handleSubmit}>
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="title">Case Title</label>
+            <input
+              id="title"
+              name="title"
+              defaultValue={initialData.title}
+              required
+            />
+          </div>
+          
+          {showAdvancedFields && (
+            <div>
+              <label htmlFor="priority">Priority</label>
+              <select id="priority" name="priority" defaultValue="medium">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          )}
+          
+          {/* Submit button with form status */}
+          <SubmitButton />
+        </div>
+        
+        {/* Error message */}
+        {result.error && (
+          <div className="error-message">
+            {result.error}
+          </div>
+        )}
+        
+        {/* Normalization feedback */}
+        {result.changes.length > 0 && (
+          <div className="normalization-feedback">
+            <p>The following fields were automatically formatted:</p>
+            <ul>
+              {result.changes.map((change, index) => (
+                <li key={index}>
+                  <strong>{change.field}:</strong> {change.original} → {change.normalized}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        {/* Optimistic result preview */}
+        {optimisticResult && !isPending && !result.error && (
+          <div className="success-preview">
+            <h3>Case created successfully!</h3>
+            <p>Title: {optimisticResult.title}</p>
+            <p>Status: {optimisticResult.status}</p>
+          </div>
+        )}
+      </form>
+    </div>
+  );
+}
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  
+  // Track when button is clicked
+  const handleClick = () => {
+    trackEvent('case_submit_button_clicked');
+  };
+  
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      onClick={handleClick}
+    >
+      {pending ? 'Creating Case...' : 'Create Case'}
+    </button>
   );
 }
 ```
 
-### Best Practices
+## Best Practices
 
-1. **Always Normalize Inputs**: Process all input data through the normalization pipeline before database operations
-2. **Provide Feedback**: Show users how their data was normalized to improve data literacy
-3. **Use Resilient Strategies**: Configure appropriate resilience strategies based on business requirements
-4. **Monitor Data Quality**: Use the data quality metrics to identify trends and issues
-5. **Consistent Schema Usage**: Ensure schemas are consistent between frontend validation and backend normalization
+1. **Use the withAuth Utility**: Standardize authentication in Server Actions
+2. **Return Appropriate Error Information**: Design Server Actions to return error information that works with useActionState
+3. **Track Important Events**: Integrate analytics tracking at key points in the user journey
+4. **Support Optimistic Updates**: Use useOptimistic for immediate user feedback
+5. **Manage Document Metadata**: Include title, meta, and link tags directly in components
+6. **Control Resource Loading**: Use the resource preloading APIs for better performance
+7. **Provide Normalization Feedback**: Show users how their data was normalized
+8. **Use Error Boundaries**: Implement Error Boundaries for graceful error handling
+9. **Configure Feature Flags**: Use Context for feature flag management
+10. **Respect Tenant Isolation**: Ensure all data operations respect tenant boundaries
+```

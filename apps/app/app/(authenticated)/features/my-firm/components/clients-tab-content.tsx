@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@repo/design-system/hooks/use-toast';
 import { ClientsContainer } from '../../clients/components/clients-container';
 import { useMyFirmStore } from '../store/my-firm-store';
-import { DefaultErrorFallback, ErrorBoundary } from './error-boundary';
+import { DefaultErrorFallback, ErrorBoundary } from '../../../components/error-boundary';
 import { getClients } from '../../clients/actions/get-client-actions';
 
 interface ClientsResult {

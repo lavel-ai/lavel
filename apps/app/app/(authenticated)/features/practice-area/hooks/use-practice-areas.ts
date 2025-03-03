@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@repo/design-system/hooks/use-toast';
+import { useAnalytics } from '@repo/analytics/posthog/client';
 import { 
   createPracticeArea,
   updatePracticeArea,
@@ -26,6 +27,7 @@ export interface UsePracticeAreasOptions {
 export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const analytics = useAnalytics();
   const [selectedPracticeAreaIds, setSelectedPracticeAreaIds] = useState<number[]>([]);
   
   // Get all practice areas
@@ -38,11 +40,34 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
   } = useQuery({
     queryKey: ['practice-areas'],
     queryFn: async () => {
-      const response = await getPracticeAreas();
-      if (response.status === 'error') {
-        throw new Error(response.message || 'Error fetching practice areas');
+      const startTime = performance.now();
+      
+      try {
+        const response = await getPracticeAreas();
+        
+        const endTime = performance.now();
+        analytics?.capture('data_fetch_completed', {
+          entity_type: 'practice_area',
+          entity_count: response.data?.length || 0,
+          duration_ms: Math.round(endTime - startTime),
+          status: response.status,
+        });
+        
+        if (response.status === 'error') {
+          throw new Error(response.message || 'Error fetching practice areas');
+        }
+        
+        return response.data || [];
+      } catch (error: any) {
+        const endTime = performance.now();
+        analytics?.capture('data_fetch_error', {
+          entity_type: 'practice_area',
+          duration_ms: Math.round(endTime - startTime),
+          error_message: error.message || 'Unknown error',
+        });
+        
+        throw error;
       }
-      return response.data || [];
     },
     initialData: initialData || undefined,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -50,7 +75,15 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
 
   // Create a new practice area with optimistic updates
   const createMutation = useMutation({
-    mutationFn: createPracticeArea,
+    mutationFn: async (newPracticeArea: any) => {
+      analytics?.capture('entity_mutation_started', {
+        mutation_type: 'create',
+        entity_type: 'practice_area',
+        entity_name: newPracticeArea.name,
+      });
+      
+      return createPracticeArea(newPracticeArea);
+    },
     onMutate: async (newPracticeArea) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['practice-areas'] });
@@ -90,11 +123,26 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
         if (response.data) {
           setSelectedPracticeAreaIds(prev => [...prev, response.data!.id]);
         }
+        
+        analytics?.capture('entity_mutation_completed', {
+          mutation_type: 'create',
+          entity_type: 'practice_area',
+          entity_id: response.data?.id,
+          entity_name: response.data?.name,
+          status: 'success',
+        });
       } else {
         toast({
           title: 'Error',
           description: response.message || 'Error al crear el área de práctica',
           variant: 'destructive',
+        });
+        
+        analytics?.capture('entity_mutation_completed', {
+          mutation_type: 'create',
+          entity_type: 'practice_area',
+          status: 'error',
+          error_message: response.message || 'Unknown error',
         });
       }
     },
@@ -110,6 +158,14 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
         description: error.message || 'Error al crear el área de práctica',
         variant: 'destructive',
       });
+      
+      analytics?.capture('entity_mutation_completed', {
+        mutation_type: 'create',
+        entity_type: 'practice_area',
+        entity_name: variables.name,
+        status: 'error',
+        error_message: error.message || 'Unknown error',
+      });
     },
     onSettled: () => {
       // Always refetch after error or success
@@ -119,7 +175,16 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
 
   // Update a practice area with optimistic updates
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => updatePracticeArea(id, data),
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      analytics?.capture('entity_mutation_started', {
+        mutation_type: 'update',
+        entity_type: 'practice_area',
+        entity_id: id,
+        entity_name: data.name,
+      });
+      
+      return updatePracticeArea(id, data);
+    },
     onMutate: async ({ id, data }) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['practice-areas'] });
@@ -157,11 +222,26 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
           title: 'Éxito',
           description: 'Área de práctica actualizada correctamente',
         });
+        
+        analytics?.capture('entity_mutation_completed', {
+          mutation_type: 'update',
+          entity_type: 'practice_area',
+          entity_id: response.data?.id,
+          entity_name: response.data?.name,
+          status: 'success',
+        });
       } else {
         toast({
           title: 'Error',
           description: response.message || 'Error al actualizar el área de práctica',
           variant: 'destructive',
+        });
+        
+        analytics?.capture('entity_mutation_completed', {
+          mutation_type: 'update',
+          entity_type: 'practice_area',
+          status: 'error',
+          error_message: response.message || 'Unknown error',
         });
       }
     },
@@ -180,6 +260,15 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
         description: error.message || 'Error al actualizar el área de práctica',
         variant: 'destructive',
       });
+      
+      analytics?.capture('entity_mutation_completed', {
+        mutation_type: 'update',
+        entity_type: 'practice_area',
+        entity_id: variables.id,
+        entity_name: variables.data.name,
+        status: 'error',
+        error_message: error.message || 'Unknown error',
+      });
     },
     onSettled: (response) => {
       // Always refetch after error or success
@@ -192,7 +281,18 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
 
   // Delete a practice area with optimistic updates
   const deleteMutation = useMutation({
-    mutationFn: deletePracticeArea,
+    mutationFn: async (id: number) => {
+      const practiceAreaToDelete = practiceAreas.find(area => area.id === id);
+      
+      analytics?.capture('entity_mutation_started', {
+        mutation_type: 'delete',
+        entity_type: 'practice_area',
+        entity_id: id,
+        entity_name: practiceAreaToDelete?.name,
+      });
+      
+      return deletePracticeArea(id);
+    },
     onMutate: async (id) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['practice-areas'] });
@@ -209,7 +309,9 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
       // Return a context with the previous value
       return { previousPracticeAreas };
     },
-    onSuccess: async (response) => {
+    onSuccess: async (response, id) => {
+      const practiceAreaToDelete = practiceAreas.find(area => area.id === id);
+      
       if (response.status === 'success') {
         // Update cache
         queryClient.invalidateQueries({ queryKey: ['practice-areas'] });
@@ -220,16 +322,34 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
         });
         
         // Remove from selected if included
-        setSelectedPracticeAreaIds(prev => prev.filter(id => !selectedPracticeAreaIds.includes(id)));
+        setSelectedPracticeAreaIds(prev => prev.filter(selectedId => selectedId !== id));
+        
+        analytics?.capture('entity_mutation_completed', {
+          mutation_type: 'delete',
+          entity_type: 'practice_area',
+          entity_id: id,
+          entity_name: practiceAreaToDelete?.name,
+          status: 'success',
+        });
       } else {
         toast({
           title: 'Error',
           description: response.message || 'Error al eliminar el área de práctica',
           variant: 'destructive',
         });
+        
+        analytics?.capture('entity_mutation_completed', {
+          mutation_type: 'delete',
+          entity_type: 'practice_area',
+          entity_id: id,
+          status: 'error',
+          error_message: response.message || 'Unknown error',
+        });
       }
     },
     onError: (error: any, id, context) => {
+      const practiceAreaToDelete = practiceAreas.find(area => area.id === id);
+      
       // Roll back to the previous value
       if (context?.previousPracticeAreas) {
         queryClient.setQueryData(['practice-areas'], context.previousPracticeAreas);
@@ -240,6 +360,15 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
         title: 'Error',
         description: error.message || 'Error al eliminar el área de práctica',
         variant: 'destructive',
+      });
+      
+      analytics?.capture('entity_mutation_completed', {
+        mutation_type: 'delete',
+        entity_type: 'practice_area',
+        entity_id: id,
+        entity_name: practiceAreaToDelete?.name,
+        status: 'error',
+        error_message: error.message || 'Unknown error',
       });
     },
     onSettled: () => {
@@ -253,11 +382,35 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
     return useQuery({
       queryKey: ['practice-area', id],
       queryFn: async () => {
-        const response = await getPracticeAreaById(id);
-        if (response.status === 'error') {
-          throw new Error(response.message || 'Error fetching practice area');
+        const startTime = performance.now();
+        
+        try {
+          const response = await getPracticeAreaById(id);
+          
+          const endTime = performance.now();
+          analytics?.capture('data_fetch_completed', {
+            entity_type: 'practice_area',
+            entity_id: id,
+            duration_ms: Math.round(endTime - startTime),
+            status: response.status,
+          });
+          
+          if (response.status === 'error') {
+            throw new Error(response.message || 'Error fetching practice area');
+          }
+          
+          return response.data;
+        } catch (error: any) {
+          const endTime = performance.now();
+          analytics?.capture('data_fetch_error', {
+            entity_type: 'practice_area',
+            entity_id: id,
+            duration_ms: Math.round(endTime - startTime),
+            error_message: error.message || 'Unknown error',
+          });
+          
+          throw error;
         }
-        return response.data;
       },
       enabled: !!id // Only run the query if we have an ID
     });
@@ -266,7 +419,13 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
   // Function to handle selection of practice areas
   const handleSelect = useCallback((practiceAreaIds: number[]) => {
     setSelectedPracticeAreaIds(practiceAreaIds);
-  }, []);
+    
+    analytics?.capture('entity_selection_changed', {
+      entity_type: 'practice_area',
+      selection_count: practiceAreaIds.length,
+      selection_ids: practiceAreaIds,
+    });
+  }, [analytics]);
 
   // Get selected practice areas
   const selectedPracticeAreas = practiceAreas.filter(
@@ -309,4 +468,3 @@ export function usePracticeAreas({ initialData }: UsePracticeAreasOptions = {}) 
     resetSelection: () => setSelectedPracticeAreaIds([]),
   };
 }
-   

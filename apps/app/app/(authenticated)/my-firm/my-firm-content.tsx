@@ -21,7 +21,7 @@ import { LawyerCard } from '../features/lawyers/components/lawyer-card';
 import {
   DefaultErrorFallback,
   ErrorBoundary,
-} from '../features/my-firm/components/error-boundary';
+} from '../components/error-boundary';
 import { SearchBar } from '../features/my-firm/components/search-bar';
 import { SkeletonCard } from '../features/my-firm/components/skeleton-card';
 import { useMyFirmStore } from '../features/my-firm/store/my-firm-store';

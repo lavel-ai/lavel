@@ -4,13 +4,13 @@ import { revalidatePath } from 'next/cache';
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
 import { getInternalUserId } from '@/app/actions/users/user-actions';
-import { lawBranches } from '@repo/database/src/tenant-app/schema/law-branches-schema';
 import { asc, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { practiceAreaSchema } from '@repo/schema/src/entities/practice-area';
 import { processPracticeAreaData } from '@repo/schema/src/pipeline/practice-area-pipeline';
-import { sql } from 'drizzle-orm';
 import * as practiceAreaQueries from '@repo/database/src/tenant-app/queries/practice-area-queries';
+import { withAuth } from '@/app/utils/with-auth';
+import { trackFormSuccess, trackFormError, trackEntityCreated, trackEntityUpdated, trackEntityDeleted } from '@repo/analytics/posthog/actions/server-actions';
 
 /**
  * Represents a practice area option that can be selected in the UI
@@ -38,6 +38,7 @@ export interface ApiResponse<T> {
   error?: {
     code: string;
     details?: any;
+    fields?: Record<string, string[]>;
   };
 }
 
@@ -206,225 +207,335 @@ function invalidatePracticeAreaCache() {
 /**
  * Creates a new practice area
  */
-export async function createPracticeArea(
-  formData: z.infer<typeof practiceAreaSchema>
-): Promise<ApiResponse<PracticeAreaOption>> {
-  try {
-    const userId = await getInternalUserId();
-    if (!userId) {
-      return {
-        status: 'error',
-        message: 'Usuario no autorizado',
-        error: {
-          code: 'UNAUTHORIZED',
-        },
-      };
-    }
-
-    // Process the data through our pipeline for normalization and validation
-    const processResult = await processPracticeAreaData(formData, {
-      userId: userId,
-      source: 'web-app',
-      operation: 'create',
-    });
+export const createPracticeArea = withAuth(
+  async ({ db, user }, formData: z.infer<typeof practiceAreaSchema>): Promise<ApiResponse<PracticeAreaOption>> => {
+    const startTime = performance.now();
     
-    // Get the normalized and validated data from the pipeline result
-    const processedData = processResult.result;
-
-    const db = await getTenantDbClientUtil();
-    
-    // Check if practice area with same name already exists - use fresh query to bypass cache
-    console.log(`Checking if practice area with name "${processedData.name}" already exists (fresh query)...`);
-    const exists = await practiceAreaQueries.practiceAreaExistsByName(
-      db, 
-      processedData.name, 
-      null,
-      true // Force a fresh database query to bypass cache
-    );
-    console.log(`Practice area existence check result: ${exists}`);
-
-    if (exists) {
-      return {
-        status: 'error',
-        message: 'Ya existe un área de práctica con este nombre',
-        error: {
-          code: 'DUPLICATE_NAME',
-        },
-      };
-    }
-
     try {
-      // Create the practice area using the query function
-      console.log(`Creating new practice area: ${processedData.name}...`);
-      const created = await practiceAreaQueries.createPracticeArea(db, processedData, userId);
-      console.log(`Successfully created practice area with ID: ${created.id}`);
+      if (!user || !user.id) {
+        return {
+          status: 'error',
+          message: 'Usuario no autorizado',
+          error: {
+            code: 'UNAUTHORIZED',
+          },
+        };
+      }
 
-      // Thoroughly invalidate all practice area cache
-      invalidatePracticeAreaCache();
+      // Process the data through our pipeline for normalization and validation
+      const processResult = await processPracticeAreaData(formData, {
+        userId: user.id,
+        source: 'web-app',
+        operation: 'create',
+        startTime,
+      });
+      
+      // Get the normalized and validated data from the pipeline result
+      const processedData = processResult.result;
+      
+      // Track normalization changes
+      const normalizationChanges = processResult.changes.filter(change => 
+        change.stage === 'normalize' || change.stage === 'sanitize'
+      );
+      
+      // Check if practice area with same name already exists - use fresh query to bypass cache
+      console.log(`Checking if practice area with name "${processedData.name}" already exists (fresh query)...`);
+      const exists = await practiceAreaQueries.practiceAreaExistsByName(
+        db, 
+        processedData.name, 
+        null,
+        true // Force a fresh database query to bypass cache
+      );
+      console.log(`Practice area existence check result: ${exists}`);
 
-      return {
-        status: 'success',
-        data: created,
-        message: 'Área de práctica creada con éxito',
-      };
-    } catch (insertError) {
-      console.error('Error inserting practice area:', insertError);
-      console.error('Insert error details:', JSON.stringify({
-        message: insertError instanceof Error ? insertError.message : 'Unknown error',
-        name: insertError instanceof Error ? insertError.name : 'Not an Error object'
+      if (exists) {
+        // Track form error for analytics
+        await trackFormError({
+          userId: user.id,
+          formType: 'practice_area',
+          errorCode: 'DUPLICATE_NAME',
+          errorMessage: 'Ya existe un área de práctica con este nombre',
+          processingTimeMs: performance.now() - startTime,
+        });
+        
+        return {
+          status: 'error',
+          message: 'Ya existe un área de práctica con este nombre',
+          error: {
+            code: 'DUPLICATE_NAME',
+            fields: {
+              name: ['Ya existe un área de práctica con este nombre']
+            }
+          },
+        };
+      }
+
+      try {
+        // Create the practice area using the query function
+        console.log(`Creating new practice area: ${processedData.name}...`);
+        const created = await practiceAreaQueries.createPracticeArea(db, processedData, user.id);
+        console.log(`Successfully created practice area with ID: ${created.id}`);
+
+        // Thoroughly invalidate all practice area cache
+        invalidatePracticeAreaCache();
+        
+        // Track successful form submission and entity creation
+        await trackFormSuccess({
+          userId: user.id,
+          formType: 'practice_area',
+          processingTimeMs: performance.now() - startTime,
+          normalizationChanges: normalizationChanges.length,
+        });
+        
+        await trackEntityCreated({
+          userId: user.id,
+          entityType: 'practice_area',
+          entityId: created.id.toString(),
+          tenantId: user.tenantId,
+        });
+
+        return {
+          status: 'success',
+          data: created,
+          message: 'Área de práctica creada con éxito',
+        };
+      } catch (insertError) {
+        console.error('Error inserting practice area:', insertError);
+        console.error('Insert error details:', JSON.stringify({
+          message: insertError instanceof Error ? insertError.message : 'Unknown error',
+          name: insertError instanceof Error ? insertError.name : 'Not an Error object'
+        }, null, 2));
+        
+        throw insertError; // Re-throw to be caught by the outer try/catch
+      }
+    } catch (error) {
+      console.error('Error creating practice area:', error);
+      console.error('Error details:', JSON.stringify({
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : 'Not an Error object'
       }, null, 2));
       
-      throw insertError; // Re-throw to be caught by the outer try/catch
+      // Track form error for analytics
+      if (user?.id) {
+        await trackFormError({
+          userId: user.id,
+          formType: 'practice_area',
+          errorCode: 'CREATE_ERROR',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          processingTimeMs: performance.now() - startTime,
+        });
+      }
+      
+      return {
+        status: 'error',
+        message: 'Error al crear área de práctica',
+        error: {
+          code: 'CREATE_ERROR',
+          details: error instanceof Error ? { message: error.message, name: error.name } : error,
+        },
+      };
     }
-  } catch (error) {
-    console.error('Error creating practice area:', error);
-    console.error('Error details:', JSON.stringify({
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : 'Not an Error object'
-    }, null, 2));
-    
-    return {
-      status: 'error',
-      message: 'Error al crear área de práctica',
-      error: {
-        code: 'CREATE_ERROR',
-        details: error instanceof Error ? { message: error.message, name: error.name } : error,
-      },
-    };
   }
-}
+);
 
 /**
  * Updates an existing practice area
  */
-export async function updatePracticeArea(
-  id: number,
-  formData: z.infer<typeof practiceAreaSchema>
-): Promise<ApiResponse<PracticeAreaOption>> {
-  try {
-    const userId = await getInternalUserId();
-    if (!userId) {
-      return {
-        status: 'error',
-        message: 'Usuario no autorizado',
-        error: {
-          code: 'UNAUTHORIZED',
-        },
-      };
-    }
-
-    // Process the data through our pipeline for normalization and validation
-    const processResult = await processPracticeAreaData(formData, {
-      userId: userId,
-      source: 'web-app',
-      operation: 'update',
-    });
+export const updatePracticeArea = withAuth(
+  async ({ db, user }, id: number, formData: z.infer<typeof practiceAreaSchema>): Promise<ApiResponse<PracticeAreaOption>> => {
+    const startTime = performance.now();
     
-    // Get the normalized and validated data from the pipeline result
-    const processedData = processResult.result;
-
-    const db = await getTenantDbClientUtil();
-    
-    // Check if practice area with same name already exists (excluding this ID) - use fresh query
-    console.log(`Checking if practice area with name "${processedData.name}" already exists (excluding ID ${id}, fresh query)...`);
-    const exists = await practiceAreaQueries.practiceAreaExistsByName(
-      db, 
-      processedData.name, 
-      id, 
-      true // Force a fresh database query to bypass cache
-    );
-    console.log(`Practice area existence check result: ${exists}`);
-
-    if (exists) {
-      return {
-        status: 'error',
-        message: 'Ya existe un área de práctica con este nombre',
-        error: {
-          code: 'DUPLICATE_NAME',
-        },
-      };
-    }
-
     try {
-      // Update the practice area using the query function
-      console.log(`Updating practice area ID ${id}...`);
-      const updated = await practiceAreaQueries.updatePracticeArea(db, id, processedData, userId);
-      console.log(`Successfully updated practice area ID ${id}`);
+      if (!user || !user.id) {
+        return {
+          status: 'error',
+          message: 'Usuario no autorizado',
+          error: {
+            code: 'UNAUTHORIZED',
+          },
+        };
+      }
+
+      // Process the data through our pipeline for normalization and validation
+      const processResult = await processPracticeAreaData(formData, {
+        userId: user.id,
+        source: 'web-app',
+        operation: 'update',
+        startTime,
+      });
+      
+      // Get the normalized and validated data from the pipeline result
+      const processedData = processResult.result;
+      
+      // Track normalization changes
+      const normalizationChanges = processResult.changes.filter(change => 
+        change.stage === 'normalize' || change.stage === 'sanitize'
+      );
+
+      // Check if practice area with same name already exists (excluding current ID)
+      const exists = await practiceAreaQueries.practiceAreaExistsByName(
+        db, 
+        processedData.name, 
+        id,
+        true // Force a fresh database query to bypass cache
+      );
+
+      if (exists) {
+        // Track form error for analytics
+        await trackFormError({
+          userId: user.id,
+          formType: 'practice_area',
+          errorCode: 'DUPLICATE_NAME',
+          errorMessage: 'Ya existe un área de práctica con este nombre',
+          processingTimeMs: performance.now() - startTime,
+        });
+        
+        return {
+          status: 'error',
+          message: 'Ya existe un área de práctica con este nombre',
+          error: {
+            code: 'DUPLICATE_NAME',
+            fields: {
+              name: ['Ya existe un área de práctica con este nombre']
+            }
+          },
+        };
+      }
+
+      // Get the existing practice area to check if it exists
+      const existingPracticeArea = await practiceAreaQueries.getPracticeAreaById(db, id);
+      if (!existingPracticeArea) {
+        // Track form error for analytics
+        await trackFormError({
+          userId: user.id,
+          formType: 'practice_area',
+          errorCode: 'NOT_FOUND',
+          errorMessage: 'Área de práctica no encontrada',
+          processingTimeMs: performance.now() - startTime,
+        });
+        
+        return {
+          status: 'error',
+          message: 'Área de práctica no encontrada',
+          error: {
+            code: 'NOT_FOUND',
+          },
+        };
+      }
+
+      // Update the practice area
+      const updated = await practiceAreaQueries.updatePracticeArea(db, id, processedData, user.id);
 
       // Thoroughly invalidate all practice area cache
       invalidatePracticeAreaCache();
+      
+      // Track successful form submission and entity update
+      await trackFormSuccess({
+        userId: user.id,
+        formType: 'practice_area',
+        processingTimeMs: performance.now() - startTime,
+        normalizationChanges: normalizationChanges.length,
+      });
+      
+      await trackEntityUpdated({
+        userId: user.id,
+        entityType: 'practice_area',
+        entityId: updated.id.toString(),
+        tenantId: user.tenantId,
+        changes: processResult.changes,
+      });
 
       return {
         status: 'success',
         data: updated,
         message: 'Área de práctica actualizada con éxito',
       };
-    } catch (updateError) {
-      console.error('Error updating practice area:', updateError);
-      console.error('Update error details:', JSON.stringify({
-        message: updateError instanceof Error ? updateError.message : 'Unknown error',
-        name: updateError instanceof Error ? updateError.name : 'Not an Error object'
-      }, null, 2));
+    } catch (error) {
+      console.error('Error updating practice area:', error);
       
-      throw updateError; // Re-throw to be caught by the outer try/catch
+      // Track form error for analytics
+      if (user?.id) {
+        await trackFormError({
+          userId: user.id,
+          formType: 'practice_area',
+          errorCode: 'UPDATE_ERROR',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          processingTimeMs: performance.now() - startTime,
+        });
+      }
+      
+      return {
+        status: 'error',
+        message: 'Error al actualizar área de práctica',
+        error: {
+          code: 'UPDATE_ERROR',
+          details: error instanceof Error ? { message: error.message, name: error.name } : error,
+        },
+      };
     }
-  } catch (error) {
-    console.error('Error updating practice area:', error);
-    console.error('Error details:', JSON.stringify({
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : 'Not an Error object'
-    }, null, 2));
-    
-    return {
-      status: 'error',
-      message: 'Error al actualizar área de práctica',
-      error: {
-        code: 'UPDATE_ERROR',
-        details: error instanceof Error ? { message: error.message, name: error.name } : error,
-      },
-    };
   }
-}
+);
 
 /**
  * Deletes a practice area
  */
-export async function deletePracticeArea(id: number): Promise<ApiResponse<null>> {
-  try {
-    const userId = await getInternalUserId();
-    if (!userId) {
+export const deletePracticeArea = withAuth(
+  async ({ db, user }, id: number): Promise<ApiResponse<null>> => {
+    const startTime = performance.now();
+    
+    try {
+      if (!user || !user.id) {
+        return {
+          status: 'error',
+          message: 'Usuario no autorizado',
+          error: {
+            code: 'UNAUTHORIZED',
+          },
+        };
+      }
+
+      // Get the existing practice area to check if it exists
+      const existingPracticeArea = await practiceAreaQueries.getPracticeAreaById(db, id);
+      if (!existingPracticeArea) {
+        return {
+          status: 'error',
+          message: 'Área de práctica no encontrada',
+          error: {
+            code: 'NOT_FOUND',
+          },
+        };
+      }
+
+      // Delete the practice area
+      await practiceAreaQueries.deletePracticeArea(db, id, user.id);
+
+      // Thoroughly invalidate all practice area cache
+      invalidatePracticeAreaCache();
+      
+      // Track entity deletion
+      await trackEntityDeleted({
+        userId: user.id,
+        entityType: 'practice_area',
+        entityId: id.toString(),
+        tenantId: user.tenantId,
+      });
+
+      return {
+        status: 'success',
+        message: 'Área de práctica eliminada con éxito',
+      };
+    } catch (error) {
+      console.error('Error deleting practice area:', error);
+      
       return {
         status: 'error',
-        message: 'Usuario no autorizado',
+        message: 'Error al eliminar área de práctica',
         error: {
-          code: 'UNAUTHORIZED',
+          code: 'DELETE_ERROR',
+          details: error instanceof Error ? { message: error.message, name: error.name } : error,
         },
       };
     }
-
-    const db = await getTenantDbClientUtil();
-    
-    // Delete the practice area using the query function (soft delete)
-    await practiceAreaQueries.deletePracticeArea(db, id, userId);
-
-    // Thoroughly invalidate all practice area cache
-    invalidatePracticeAreaCache();
-
-    return {
-      status: 'success',
-      message: 'Área de práctica eliminada con éxito',
-    };
-  } catch (error) {
-    console.error('Error deleting practice area:', error);
-    return {
-      status: 'error',
-      message: 'Error al eliminar área de práctica',
-      error: {
-        code: 'DELETE_ERROR',
-        details: error,
-      },
-    };
   }
-}
+);

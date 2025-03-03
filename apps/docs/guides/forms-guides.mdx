@@ -1,385 +1,381 @@
-# Complex Form Handling Pattern
+# Introduction
 
-This document outlines our approach to handling complex forms with multiple validation layers and business rules in a multi-tenant law firm application built with Next.js and Drizzle ORM. It uses a hybrid schema strategy—base schemas inferred from the database and extended for UI needs—combined with a modular normalization system to ensure data consistency across entities.
+This guide outlines how to implement forms in the Lavel AI platform while properly addressing all cross-cutting concerns using React 19 features. Following this architecture ensures consistency, data quality, and a great user experience.
 
-## Directory Structure
+## Architecture Principles for Forms
 
-```
-features/[feature-name]/
-├── schemas/                # Form-specific schema extensions
-│   └── index.ts           # Exports extended schemas with UI rules
-├── validation/            # Business validation rules
-│   └── index.ts          # Exports validation functions
-├── hooks/                 # Custom hooks
-│   └── use-[feature]-form.ts  # Form handling hook
-└── components/            # Form components
-    ├── progress-indicator.tsx  # Progress and validation feedback
+Our form implementations should adhere to these key principles:
 
-packages/database/src/tenant-app/utils/
-├── normalize/             # Modular normalization utilities
-│   ├── index.ts          # Exports all normalizers
-│   ├── utils.ts          # Shared normalization functions
-│   ├── client.ts         # Client-specific normalizers
-│   ├── address.ts        # Address-specific normalizers
-│   └── contact.ts        # Contact-specific normalizers
-```
+- **Data Quality**: All user input undergoes normalization, validation, and sanitization
+- **Tenant Isolation**: All operations respect tenant boundaries
+- **Authentication and Authorization**: Proper access controls at every level
+- **Error Handling**: Consistent error handling and user feedback
+- **Analytics**: Comprehensive tracking of user interactions and form events
+- **Feature Flags**: Support for feature toggling and experimentation
+- **Resource Management**: Optimize loading of stylesheets and scripts
+- **Optimistic Updates**: Provide immediate feedback for key operations
 
-## 1. Schema Layer
+## Step-by-Step Implementation Guide
 
-Schemas are split between database and UI layers for consistency and flexibility:
-- **Database Schemas**: Defined in `packages/database/src/tenant-app/schema/[entity]-schema.ts` using Drizzle ORM with base Zod schemas inferred via `createInsertSchema`.
-- **Form Schemas**: Extended in `features/[feature-name]/schemas/index.ts` for UI-specific validations, leveraging normalization transformers from `normalize/`.
+### 1. Define Entity Schema and Normalization Rules
 
-### Database Schema (`[entity]-schema.ts`)
-Define the table and infer a base Zod schema:
+Start by defining your entity schema using Zod:
 
 ```typescript
-// packages/database/src/tenant-app/schema/clients-schema.ts
-import { pgTable, varchar } from 'drizzle-orm/pg-core';
-import { createInsertSchema } from 'drizzle-zod';
-
-export const clients = pgTable('clients', {
-  legalName: varchar('legal_name', { length: 255 }).notNull(),
-  taxId: varchar('tax_id', { length: 13 }),
-});
-
-export const clientInsertSchema = createInsertSchema(clients);
-```
-
-### Form Schema (`schemas/index.ts`)
-
-Extend the base schema with UI rules and normalization transformers:
-
-```typescript
-// apps/app/(authenticated)/features/clients/schemas/index.ts
-import { z } from "zod";
-import { clientInsertSchema } from "@repo/database/src/tenant-app/schema";
-import { normalizeClient } from "@repo/database/src/tenant-app/utils/normalize/client";
-
-export const clientFormSchema = clientInsertSchema.extend({
-  legalName: z.string()
-    .min(1, "Legal name is required")
-    .transform(normalizeClient.legalName),
-  taxId: z.string()
-    .max(13, "Tax ID must be 13 characters or less")
-    .optional()
-    .transform(normalizeClient.taxId),
-  addresses: z.array(/* address schema */).min(1, "At least one address required"),
-});
-
-export type ClientFormData = z.infer<typeof clientFormSchema>;
-```
-
-### Normalization (`normalize/[entity].ts`)
-
-Define reusable field-specific normalizers in modular files:
-
-```typescript
-// packages/database/src/tenant-app/utils/normalize/client.ts
+// packages/schema/src/entities/entity-name.ts
 import { z } from 'zod';
-import { utils } from './utils';
 
-export const normalizeClient = {
-  legalName: (input: string | null | undefined) => utils.titleCase(input),
-  taxId: (input: string | null | undefined) => {
-    const val = utils.uppercase(input);
-    return val && /^[A-Z&Ñ]{3,4}[0-9]{6}[A-Z0-9]{3}$/.test(val) ? val : '';
-  },
-};
+export const entitySchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  // Additional fields...
+});
 
-export const clientTransformers = {
-  legalName: z.string().transform(normalizeClient.legalName),
-  taxId: z.string().transform(normalizeClient.taxId),
-};
+export type Entity = z.infer<typeof entitySchema>;
+
+// Optional fields for updates
+export const entityUpdateSchema = entitySchema.partial();
 ```
 
-### Key Principles:
+Best practices for schema definition:
+- Include meaningful validation error messages
+- Use consistent patterns for similar fields across entities
+- Consider internationalization for error messages
 
-1. Infer Base Schemas: Use createInsertSchema to align with the database structure, avoiding field redefinition.
-2. Extend for UI: Add form-specific rules (e.g., .min(1)) and normalization in schemas/index.ts.
-3. Modular Normalization: Define field-specific normalizers in normalize/[entity].ts (e.g., normalizeClient.legalName), reusable across entities with similar fields (e.g., emails).
-4. Single Schema File: Keep UI schemas in schemas/index.ts per feature, pulling in normalization transformers.
+### 2. Create Normalization and Sanitization Functions
 
-## 2. Business Rules (`validation/index.ts`)
-
-Handle complex validations beyond schema checks:
+Leverage our utility functions for data normalization and sanitization:
 
 ```typescript
-import { type ClientFormData } from "../schemas";
+// Reference to existing implementations
+// packages/schema/src/utils/normalize.ts - for text normalization
+// packages/schema/src/utils/sanitize.ts - for security sanitization
+```
 
-export type ValidationResult = {
-  valid: boolean;
-  error?: string;
-  field?: string;
-};
+Create a pipeline for your entity that applies these functions:
 
-export const validation = {
-  validateAddresses: (data: ClientFormData): ValidationResult => {
-    const hasPrimary = data.addresses.some(addr => addr.isPrimary);
-    return { valid: hasPrimary, error: hasPrimary ? undefined : "One address must be primary", field: "addresses" };
-  },
-  validateForm: (data: ClientFormData): ValidationResult[] => {
-    return [validation.validateAddresses(data)].filter(r => !r.valid);
+```typescript
+// packages/schema/src/pipeline/entity-pipeline.ts
+import { normalizeText } from '../utils/normalize';
+import { sanitizeText } from '../utils/sanitize';
+
+export async function processEntityData(data, context = {}) {
+  // Follow the linear pipeline flow:
+  // 1. Sanitize (security)
+  // 2. Normalize (standardization)
+  // 3. Validate (schema)
+  
+  // Track changes for transparency
+  const changes = [];
+  
+  // Implementation details...
+  
+  return {
+    result: processedData,
+    changes,
+    errors: []
+  };
+}
+```
+
+### 3. Implement Database Queries
+
+Create the database schema and query functions following our standard pattern:
+
+```typescript
+// packages/database/src/tenant-app/schema/entity-name.ts
+// packages/database/src/tenant-app/queries/entity-name-queries.ts
+```
+
+Database query best practices:
+- Separate schema definition from query implementation
+- Include proper error handling with detailed logs
+- Implement tenant isolation at the query level
+- Create dedicated functions for each operation
+
+### 4. Leverage Analytics Integration
+
+Our application uses the `@repo/analytics` package for comprehensive tracking. Integrate it into your form implementation by:
+
+#### Client-side Analytics
+
+Use existing components rather than reimplementing them:
+
+1. **Form Tracking**: Use `TrackedForm` from `@repo/analytics/posthog/components/tracked-form`
+   ```tsx
+   import { TrackedForm } from '@repo/analytics/posthog/components/tracked-form';
+   
+   // In your form component:
+   <TrackedForm 
+     formType="entity_creation"
+     entityType="entity"
+     entityId={isEditing ? entity.id : undefined}
+     properties={{
+       // Additional properties
+     }}
+   >
+     {/* Form fields */}
+   </TrackedForm>
+   ```
+
+2. **Entity View Tracking**: Use `EntityViewTracker` from `@repo/analytics/posthog/components/entity-view-tracker`
+   ```tsx
+   import { EntityViewTracker } from '@repo/analytics/posthog/components/entity-view-tracker';
+   
+   // In your entity detail component:
+   <EntityViewTracker
+     entityType="entity"
+     entityId={entity.id}
+     properties={{
+       // Additional context
+     }}
+   />
+   ```
+
+3. **Manual Event Tracking**: Use the `useAnalytics` hook
+   ```tsx
+   import { useAnalytics } from '@repo/analytics/posthog/client';
+   
+   // In your component:
+   const analytics = useAnalytics();
+   
+   // Track custom event
+   const handleAction = () => {
+     analytics.capture('custom_action', {
+       action_type: 'specific_action',
+       // Additional properties
+     });
+   };
+   ```
+
+#### Server-side Analytics
+
+Use the server-side tracking utilities:
+
+```typescript
+import { 
+  trackFormSuccess, 
+  trackFormError,
+  trackEntityCreated, 
+  trackEntityUpdated, 
+  trackEntityDeleted 
+} from '@repo/analytics/posthog/actions/server-actions';
+
+// In your server action:
+await trackFormSuccess({
+  userId: user.id,
+  formType: 'entity_creation',
+  processingTimeMs: performance.now() - startTime,
+  normalizationChanges,
+});
+
+await trackEntityCreated({
+  userId: user.id,
+  entityType: 'entity',
+  entityId: created.id.toString(),
+  tenantId: user.tenantId,
+});
+```
+
+### 5. Integrate Observability
+
+Leverage the `@repo/observability` package for error tracking and monitoring:
+
+1. **Error Handling**: Use the error utilities in server actions and components
+   ```typescript
+   import { captureError } from '@repo/observability/error';
+   
+   // In your error handling:
+   try {
+     // Your code
+   } catch (error) {
+     captureError(error, {
+       context: 'entityCreation',
+       additionalData: { /* context */ }
+     });
+     
+     // Return appropriate error to client
+   }
+   ```
+
+2. **Error Boundaries**: Use the `ErrorBoundary` component to catch UI errors
+   ```tsx
+   import { ErrorBoundary } from '@/app/(authenticated)/components/error-boundary';
+   
+   // In your page component:
+   <ErrorBoundary componentName="EntityForm">
+     <EntityForm />
+   </ErrorBoundary>
+   ```
+
+3. **Performance Monitoring**: Track key operations
+   ```typescript
+   // Measure operation time
+   const startTime = performance.now();
+   
+   // After operation is complete
+   const operationTime = performance.now() - startTime;
+   
+   // Include in analytics events
+   trackFormSuccess({
+     // ...
+     processingTimeMs: operationTime,
+   });
+   ```
+
+### 6. Create Server Actions with Cross-Cutting Concerns
+
+Implement Server Actions that handle authentication, tenant isolation, normalization, and analytics:
+
+```typescript
+// app/(authenticated)/features/entity/actions/entity-actions.ts
+'use server'
+
+import { withAuth } from '@/app/utils/with-auth';
+import { processEntityData } from '@repo/schema/src/pipeline/entity-pipeline';
+import { 
+  trackFormSuccess, 
+  trackFormError,
+  trackEntityCreated 
+} from '@repo/analytics/posthog/actions/server-actions';
+
+// Create entity
+export const createEntity = withAuth(async ({ db, user }, prevState, formData) => {
+  const startTime = performance.now();
+  
+  try {
+    // Your implementation
+    // ...
+    
+    // Track analytics events
+    // ...
+    
+    return { success: true, data: result };
+  } catch (error) {
+    // Error handling
+    // ...
+    
+    return { error: error.message };
   }
-};
+});
 ```
 
-### Key Principles:
+The `withAuth` utility provides:
+- Authentication verification
+- Tenant database connection
+- User context retrieval
+- Error handling and logging
 
-1. Type Safety: Use form schema types from schemas/index.ts.
-2. Complex Logic: Validate cross-field rules (e.g., primary address requirement).
-3. Pure Functions: Ensure testability and reusability.
-4. Error Mapping: Return field-specific errors for UI feedback.
+### 7. Build Client Components with React 19 Features
 
-## 3. Form Hook (`hooks/use-[feature]-form.ts`)
+Create form components using React 19's features and our normalized form components:
 
-Integrates schema validation, business rules, and progress tracking:
+```tsx
+// app/(authenticated)/features/entity/components/entity-form.tsx
+'use client'
+import { useActionState } from 'react';
+import { createEntity } from '../actions/entity-actions';
+import { TrackedForm } from '@repo/analytics/posthog/components/tracked-form';
+import { NormalizedTextInput } from '@repo/design-system/components/form/normalized-text-input';
 
-```typescript
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { clientFormSchema, type ClientFormData } from "../schemas";
-import { validation } from "../validation";
-
-export function useClientForm() {
-  const form = useForm<ClientFormData>({
-    resolver: zodResolver(clientFormSchema),
-    defaultValues: {
-      legalName: "",
-      taxId: "",
-      addresses: [],
-    },
-  });
-
-  const onSubmit = async (data: ClientFormData) => {
-    const businessErrors = validation.validateForm(data);
-    if (businessErrors.length > 0) {
-      businessErrors.forEach(err => form.setError(err.field as any, { message: err.error }));
-      return false;
-    }
-    console.log("Submitting:", data);
-    return true;
-  };
-
-  const tabs = {
-    basic: {
-      hasError: !!form.formState.errors.legalName,
-      isComplete: !!form.getValues("legalName"),
-      label: "Basic Info",
-    },
-    address: {
-      hasError: !!form.formState.errors.addresses,
-      isComplete: form.getValues("addresses")?.length > 0 && form.getValues("addresses").some(a => a.isPrimary),
-      label: "Address",
-    },
-  };
-
-  return { form, onSubmit, tabs };
-}
-```
-
-### Key Principles:
-
-1. Schema Validation: Use zodResolver for automatic checks.
-2. Business Rules: Apply in onSubmit via validation.
-3. Normalization: Handled by Zod transformers; no extra logic here.
-4. Progress Tracking: Expose tabs for UI indicators.
-
-## 4. Usage in Components
-
-Components use the hook with a progress indicator:
-
-```typescript
-import { ProgressIndicator } from "./progress-indicator";
-
-function ClientForm() {
-  const { form, onSubmit, tabs } = useClientForm();
-  return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
-      <ProgressIndicator tabs={tabs} currentTab="basic" />
-      <input {...form.register("legalName")} placeholder="Legal Name" />
-      {form.formState.errors.legalName && <p>{form.formState.errors.legalName.message}</p>}
-      <button type="submit">Submit</button>
-    </form>
+export function EntityForm({ initialData = {}, isEditing = false }) {
+  // Form state with useActionState (React 19)
+  const [state, formAction] = useActionState(
+    createEntity, 
+    { status: null, message: null }
   );
+  
+  // Your implementation
+  // ...
 }
 ```
 
-## 5. Progress Indicator (`components/progress-indicator.tsx`)
+### 8. Implement Optimistic Updates
 
-Shows form progress and highlights issues:
+For components that benefit from immediate feedback:
 
-```typescript
-import { cn } from "@repo/design-system/lib/utils";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+```tsx
+// For list or action components
+import { useOptimistic } from 'react';
 
-interface TabValidation { hasError: boolean; isComplete: boolean; label: string; }
-interface ProgressIndicatorProps { tabs: Record<string, TabValidation>; currentTab: string; }
-
-export function ProgressIndicator({ tabs, currentTab }: ProgressIndicatorProps) {
-  const totalSteps = Object.keys(tabs).length;
-  const completedSteps = Object.values(tabs).filter(tab => tab.isComplete).length;
-  const progress = (completedSteps / totalSteps) * 100;
-
-  return (
-    <div className="mt-2 mb-6">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-muted-foreground">Progress</div>
-        <div className="text-sm text-muted-foreground">{completedSteps} of {totalSteps} completed</div>
-      </div>
-      <div className="h-2 bg-secondary rounded-full overflow-hidden">
-        <div className="h-full bg-primary transition-all duration-500" style={{ width: `${progress}%` }} />
-      </div>
-      <div className="grid grid-cols-4 gap-4 mt-4">
-        {Object.entries(tabs).map(([key, tab]) => (
-          <div key={key} className={cn(
-            "flex items-center space-x-2 p-2 rounded-md",
-            currentTab === key && "bg-muted",
-            tab.hasError && "text-destructive",
-            tab.isComplete && "text-primary"
-          )}>
-            {tab.hasError ? <AlertCircle className="h-4 w-4 text-destructive animate-pulse" /> :
-             tab.isComplete ? <CheckCircle2 className="h-4 w-4 text-primary" /> :
-             <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />}
-            <span className="text-sm font-medium">{tab.label}</span>
-            {tab.hasError && <span className="text-xs text-destructive ml-auto">Required</span>}
-          </div>
-        ))}
-      </div>
-      {Object.values(tabs).some(tab => tab.hasError) && (
-        <div className="flex items-center mt-2 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4 mr-2" /> Please complete all required fields
-        </div>
-      )}
-    </div>
-  );
+export function EntityAction({ entity }) {
+  // Optimistic state
+  const [optimisticState, setOptimisticState] = useOptimistic(entity.state);
+  
+  // Implementation
+  // ...
 }
 ```
 
-## Best Practices
+## Form Implementation Checklist
 
-### Schema Layer
+Use this checklist to ensure you've properly addressed all concerns:
 
-1. Infer Base: Use createInsertSchema for database alignment.
-2. Extend in UI: Add form rules (e.g., .min(1)) in schemas/index.ts, using normalize/[entity].ts transformers.
-3. Avoid Full Objects: Define normalization per field (e.g., normalizeClient.legalName), not entire entities unless needed.
-4. Type Safety: Export types from schemas/index.ts.
+### Schema and Data Processing
+- [ ] Define entity schema with Zod
+- [ ] Implement data processing pipeline (sanitize → normalize → validate)
+- [ ] Track and report normalization changes
 
-### Business Rules
+### Database Layer
+- [ ] Define database schema
+- [ ] Create query functions with proper tenant isolation
+- [ ] Implement comprehensive error handling
 
-1. Supplement: Add logic beyond schema validation.
-2. Pure: Keep testable.
-3. Map Errors: Link to fields for UI.
+### Analytics
+- [ ] Use `TrackedForm` for form lifecycle events
+- [ ] Track entity operations in server actions
+- [ ] Include proper context in analytics events
+- [ ] Measure and report performance metrics
 
-### Form Hook
+### Server Actions
+- [ ] Use `withAuth` for authentication and tenant isolation
+- [ ] Implement proper error handling and reporting
+- [ ] Add analytics event tracking
+- [ ] Implement cache invalidation with revalidatePath
 
-1. Resolver: Use zodResolver.
-2. Combine: Schema + business rules.
-3. Progress: Track tab status.
+### Client Components
+- [ ] Use `useActionState` for form state management
+- [ ] Use normalized form components from design system
+- [ ] Show normalization feedback to users
+- [ ] Implement proper loading states
 
-### Components
+### Error Handling
+- [ ] Use `ErrorBoundary` for component-level errors
+- [ ] Use `captureError` for server-side errors
+- [ ] Provide user-friendly error messages
+- [ ] Track errors in analytics
 
-1. Register: Use form.register.
-2. Feedback: Show errors and progress.
+## Standard Analytics Events
 
-### Normalization
+Our analytics package standardizes the following events:
 
-1. Modular: Define field-specific rules in normalize/[entity].ts (e.g., normalizeClient.taxId).
-2. Reusable: Apply rules across tables (e.g., normalize.email for all email fields).
-3. Layered: Use in Zod .transform() and server actions.
-4. Server Backup: Re-apply in actions for safety.
+### Form Events
+- `form_viewed` - When a form is loaded
+- `form_submitted` - When a form is submitted
+- `form_abandoned` - When a user leaves without submitting
+- `form_submission_succeeded` - Server-side success
+- `form_submission_failed` - Server-side failure
 
-## Example Normalization
+### Entity Events
+- `entity_created` - When any entity is created
+- `entity_updated` - When any entity is modified
+- `entity_deleted` - When any entity is removed
+- `entity_viewed` - When any entity detail page is viewed
 
-```typescript
-// normalize/client.ts
-export const normalizeClient = {
-  legalName: (input) => utils.titleCase(input),
-  email: (input) => {
-    const val = utils.lowercase(input);
-    return val && /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(val) ? val : null;
-  },
-};
+Include standard properties with these events:
+- `entity_type` - Type of entity
+- `entity_id` - ID of the entity (when applicable)
+- `form_type` - Type of form
+- `time_spent` - Duration of operation
+- `fields_completed` - Number of fields completed
+- `tenant_id` - Current tenant context
 
-// schemas/index.ts
-legalName: z.string().min(1).transform(normalizeClient.legalName),
-portalAccessEmail: z.string().optional().transform(normalizeClient.email),
-```
+## Conclusion
 
-## When to Use This Pattern
+By following this guide, you'll create forms that align with our architectural principles and leverage our existing infrastructure:
 
-- Multi-step forms with complex validation.
-- Apps with many entities (e.g., 30+ tables).
-- Multi-tenant setups.
+- Data quality through our normalization pipeline
+- Comprehensive analytics with our tracking system
+- Robust error handling with our observability package
+- Great user experience with standardized components
 
-## When Not to Use
-
-For simple forms:
-
-```typescript
-const simpleForm = useForm({ resolver: zodResolver(simpleSchema) });
-```
-
-## Testing
-
-### Schema Tests
-
-```typescript
-test("normalizes legalName", () => {
-  const result = clientFormSchema.parse({ legalName: " john doe " });
-  expect(result.legalName).toBe("John Doe");
-});
-```
-
-### Validation Tests
-
-```typescript
-test("requires primary address", () => {
-  const result = validation.validateAddresses({ addresses: [{ isPrimary: false }] });
-  expect(result.valid).toBe(false);
-});
-```
-
-### Hook Tests
-
-```typescript
-test("tracks progress", () => {
-  const { result } = renderHook(() => useClientForm());
-  expect(result.current.tabs.basic.isComplete).toBe(false);
-});
-```
-
-## Performance Considerations
-
-1. Memoize: Use useMemo for tab status or expensive validation.
-2. Debounce: For real-time validation if needed.
-3. Modular: Keep normalize/ files small for quick imports.
-
-## Extending the Pattern
-
-### API Integration
-
-```typescript
-const onSubmit = async (data) => {
-  if (validation.validateForm(data).length === 0) await api.submitClient(data);
-};
-```
-
-### Tenant Database Connection
-
-```typescript
-"use server"
-import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
-import { normalizeClient } from '@repo/database/src/tenant-app/utils/normalize/client';
-
-export async function createClient(data: ClientFormData) {
-  const db = await getTenantDbClientUtil();
-  const userId = await getInternalUserId();
-  const normalized = {
-    ...data,
-    legalName: normalizeClient.legalName(data.legalName),
-    taxId: normalizeClient.taxId(data.taxId),
-  };
-  return await db.insert(clients).values({ ...normalized, createdBy: userId, updatedBy: userId }).returning();
-}
-```
+These patterns are consistent with React 19's features and ensure a maintainable and scalable system.

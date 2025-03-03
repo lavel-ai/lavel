@@ -14,6 +14,7 @@ import {
   BreadcrumbSeparator,
 } from '@repo/design-system/components/ui/breadcrumb';
 import { Home } from 'lucide-react';
+import { DepartmentForm } from '../features/departments/components/department-form';
 
 export default async function PracticeAreaPage() {
   // Fetch initial data using Server Action
@@ -43,6 +44,16 @@ export default async function PracticeAreaPage() {
         </div>
         <NewPracticeAreaButton />
       </div>
+      
+      {/* Department Form Test Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Test Department Form</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DepartmentForm />
+        </CardContent>
+      </Card>
       
       <Card>
         <CardHeader>

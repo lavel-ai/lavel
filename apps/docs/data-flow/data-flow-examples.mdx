@@ -1,432 +1,186 @@
 ---
 title: 'Data Flow Examples'
-description: 'Examples and best practices for data flow implementation'
+description: 'Examples and best practices for React 19 data flow implementation'
 ---
 
 # Data Flow Examples and Best Practices
 
-This document provides complete examples of data flow implementation and best practices to follow in the Lavel AI platform.
+This document provides complete examples of data flow implementation using React 19 features in the Lavel AI platform. These examples demonstrate how to implement common patterns with the new React 19 APIs.
 
-## Complete Example: Case Management
+## Example 1: Simple Form with useActionState
 
-The following example demonstrates the complete data flow for the case management feature, including:
+A simple form with automatic form handling and error state management:
 
-1. Server Components
-2. Server Actions
-3. Database Query Functions
-4. Client Components with React Query
-5. Custom Hooks for Data Access
-
-### 1. Server Component (Cases Page)
+### Server Action (create-client.js)
 
 ```tsx
-// app/(authenticated)/[tenant]/cases/page.tsx
-import { Suspense } from 'react';
-import { getCases } from '../features/cases/actions/get-cases';
-import { CasesList } from '../features/cases/components/cases-list';
-import { NewCaseButton } from '../features/cases/components/new-case-button';
-import { CasesListSkeleton } from '../features/cases/components/skeletons';
-
-export default async function CasesPage({ params }) {
-  // Get initial cases data from server action
-  const response = await getCases({});
-  
-  const initialCases = response.status === 'success' 
-    ? response.data 
-    : [];
-  
-  return (
-    <div className="p-4">
-      <div className="flex justify-between mb-6">
-        <h1 className="text-2xl font-bold">Cases</h1>
-        <NewCaseButton tenant={params.tenant} />
-      </div>
-      
-      <Suspense fallback={<CasesListSkeleton />}>
-        {/* Pass initial data to Client Component */}
-        <CasesList initialCases={initialCases} tenant={params.tenant} />
-      </Suspense>
-    </div>
-  );
-}
-```
-
-### 2. Server Action (Get Cases)
-
-```tsx
-// app/(authenticated)/features/cases/actions/get-cases.ts
 'use server'
 
-import { auth } from '@repo/auth/server';
-import { redis } from '@repo/cache/redis';
-import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
-import { getCasesQuery } from '@repo/database/queries/cases-queries';
-import { normalizeCase } from '@repo/database/utils/normalize/case';
-import { getTenantIdentifier } from '@/app/utils/tenant-identifier';
-import { captureError } from '@repo/observability/error';
+import { withAuth } from '@/utils/with-auth';
+import { insertClientQuery } from '@repo/database/queries/clients-queries';
+import { clientSchema } from '../schema';
 
-type GetCasesResponse = {
-  status: 'success' | 'error';
-  data?: any[];
-  message?: string;
-}
-
-export async function getCases(filters = {}): Promise<GetCasesResponse> {
+export const createClient = withAuth(async ({ db, user }, prevState, formData) => {
+  // Extract form data
+  const rawData = Object.fromEntries(formData.entries());
+  
+  // Validate using schema
+  const validationResult = clientSchema.safeParse(rawData);
+  if (!validationResult.success) {
+    // Return error message
+    return validationResult.error.flatten().formErrors.join(', ');
+  }
+  
   try {
-    // 1. Authentication check
-    const { userId } = await auth();
-    if (!userId) {
-      return { status: 'error', message: 'Unauthorized' };
-    }
-    
-    // 2. Get tenant identifier
-    const tenantId = await getTenantIdentifier();
-    
-    if (!tenantId) {
-      return { status: 'error', message: 'Invalid tenant' };
-    }
-    
-    // 3. Try cache first
-    const cacheKey = `${tenantId}:cases:list:${JSON.stringify(filters)}`;
-    const cached = await redis.get(cacheKey);
-    
-    if (cached) {
-      return { status: 'success', data: JSON.parse(cached) };
-    }
-    
-    // 4. Get tenant database client
-    const tenantDb = await getTenantDbClientUtil();
-    
-    // 5. Map clerk ID to internal user ID
-    const user = await tenantDb.query.users.findFirst({
-      where: (users, { eq }) => eq(users.clerkId, userId)
+    // Insert data
+    await insertClientQuery(db, {
+      ...validationResult.data,
+      createdBy: user.id
     });
     
-    if (!user) {
-      return { status: 'error', message: 'User not found' };
-    }
-    
-    // 6. Track the event
-    trackEvent('cases_viewed', {
-      filter_count: Object.keys(filters).length
-    });
-    
-    // 7. Get cases from database
-    const cases = await getCasesQuery(tenantDb, user.id, filters);
-    
-    // 8. Normalize cases for client
-    const normalizedCases = cases.map(normalizeCase);
-    
-    // 9. Cache results
-    await redis.set(cacheKey, JSON.stringify(normalizedCases), 'EX', 60);
-    
-    // 10. Return structured response
-    return { status: 'success', data: normalizedCases };
+    // Return null for success
+    return null;
   } catch (error) {
-    // 11. Error handling
-    console.error('Error fetching cases:', error);
-    
-    captureError(error, {
-      context: 'getCases',
-      filters
-    });
-    
-    return { status: 'error', message: 'Failed to fetch cases' };
+    // Return error message
+    return `Failed to create client: ${error.message}`;
   }
-}
+});
 ```
 
-### 3. Database Query Function
-
-```tsx
-// packages/database/src/tenant-app/queries/cases-queries.ts
-import { eq, and, desc, sql } from 'drizzle-orm';
-import { cases, caseAssignments } from '../schema';
-
-export async function getCasesQuery(
-  db,
-  userId,
-  filters = {}
-) {
-  // Build query based on filters
-  const conditions = [
-    // Cases created by user or assigned to user
-    sql`(${eq(cases.createdBy, userId)} OR EXISTS (
-      SELECT 1 FROM ${caseAssignments}
-      WHERE ${and(
-        eq(caseAssignments.caseId, cases.id),
-        eq(caseAssignments.userId, userId)
-      )}
-    ))`
-  ];
-  
-  // Add status filter if provided
-  if (filters.status) {
-    conditions.push(eq(cases.status, filters.status));
-  }
-  
-  // Execute query
-  return db.select()
-    .from(cases)
-    .where(and(...conditions))
-    .orderBy(desc(cases.createdAt))
-    .limit(50);
-}
-
-export async function insertCaseQuery(
-  db,
-  caseData
-) {
-  const result = await db.insert(cases).values(caseData);
-  const insertedId = result.insertId;
-  
-  // Fetch the inserted case
-  return db.query.cases.findFirst({
-    where: (cases, { eq }) => eq(cases.id, insertedId)
-  });
-}
-```
-
-### 4. Custom Hook for Data Access
-
-```tsx
-// app/(authenticated)/features/cases/hooks/use-cases.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCases, createCase, updateCase, deleteCase } from '../actions/cases';
-import { useParams } from 'next/navigation';
-import { useToast } from '@repo/design-system/components/ui/toast';
-
-export function useCases(filters = {}) {
-  const params = useParams();
-  const tenant = params.tenant;
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  
-  // Query for fetching cases
-  const query = useQuery({
-    queryKey: ['cases', tenant, filters],
-    queryFn: async () => {
-      const response = await getCases(filters);
-      if (response.status === 'error') {
-        throw new Error(response.message);
-      }
-      return response.data;
-    },
-    enabled: !!tenant,
-  });
-  
-  // Mutation for creating cases
-  const createMutation = useMutation({
-    mutationFn: createCase,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant] });
-      
-      toast({
-        title: "Case created",
-        description: `Case "${data.title}" created successfully`
-      });
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error creating case",
-        description: error.message
-      });
-    }
-  });
-  
-  // Other mutations...
-  
-  return {
-    // Query properties
-    cases: query.data,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    
-    // Mutations
-    createCase: createMutation.mutate,
-    
-    // Mutation states
-    isCreating: createMutation.isPending,
-  };
-}
-```
-
-### 5. Client Component Using Custom Hook
+### Client Component (ClientForm.jsx)
 
 ```tsx
 'use client'
-// app/(authenticated)/features/cases/components/cases-list.tsx
-import { useCases } from '../hooks/use-cases';
-import { useState } from 'react';
-import { CaseFilters } from './case-filters';
-import { CaseCard } from './case-card';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { createClient } from '../actions/create-client';
 
-export function CasesList({ initialCases }) {
-  const [filters, setFilters] = useState({});
-  
-  // Use the custom hook
-  const { 
-    cases, 
-    isLoading, 
-    isError, 
-    error 
-  } = useCases(filters);
-  
-  // Filter change handler
-  const handleFilterChange = (newFilters) => {
-    setFilters(newFilters);
-  };
-  
-  if (isError) {
-    return (
-      <div className="p-4 bg-red-50 text-red-700 rounded">
-        Error loading cases: {error.message}
-      </div>
-    );
-  }
-  
-  const displayCases = cases || initialCases;
+export function ClientForm() {
+  // useActionState returns [state, action, isPending]
+  const [error, formAction, isPending] = useActionState(createClient, null);
   
   return (
-    <div>
-      <div className="mb-4">
-        <CaseFilters 
-          filters={filters} 
-          onChange={handleFilterChange}
-        />
-      </div>
+    <div className="p-6 bg-white rounded-lg shadow-sm">
+      <h2 className="text-xl font-bold mb-4">Create New Client</h2>
       
-      {isLoading && !initialCases ? (
-        <p>Loading...</p>
-      ) : displayCases?.length === 0 ? (
-        <p>No cases found</p>
-      ) : (
-        <div className="grid gap-4">
-          {displayCases?.map(caseItem => (
-            <CaseCard key={caseItem.id} caseData={caseItem} />
-          ))}
+      <form action={formAction}>
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium">
+              Client Name
+            </label>
+            <input
+              id="name"
+              name="name"
+              className="mt-1 block w-full rounded-md border p-2"
+              required
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium">
+              Email
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              className="mt-1 block w-full rounded-md border p-2"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="phone" className="block text-sm font-medium">
+              Phone
+            </label>
+            <input
+              id="phone"
+              name="phone"
+              className="mt-1 block w-full rounded-md border p-2"
+            />
+          </div>
+          
+          <SubmitButton />
         </div>
-      )}
+        
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 text-red-700 rounded">
+            {error}
+          </div>
+        )}
+      </form>
     </div>
   );
 }
-```
 
-### 6. Form Component with Mutation
-
-```tsx
-'use client'
-// app/(authenticated)/features/cases/components/new-case-form.tsx
-import { useCases } from '../hooks/use-cases';
-import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
-
-export function NewCaseForm({ onSuccess }) {
-  const { createCase, isCreating } = useCases();
-  const params = useParams();
-  const router = useRouter();
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    status: 'draft'
-  });
-  
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    const response = await createCase(formData);
-    
-    if (response.status === 'success') {
-      if (onSuccess) onSuccess();
-      
-      // Navigate to the new case
-      router.push(`/${params.tenant}/cases/${response.data.id}`);
-    }
-  };
+function SubmitButton() {
+  // useFormStatus reads the status of the parent form
+  const { pending } = useFormStatus();
   
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="title" className="block text-sm font-medium">
-          Case Title
-        </label>
-        <input
-          id="title"
-          name="title"
-          value={formData.title}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border p-2"
-          required
-        />
-      </div>
-      
-      <div>
-        <label htmlFor="description" className="block text-sm font-medium">
-          Description
-        </label>
-        <textarea
-          id="description"
-          name="description"
-          value={formData.description}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border p-2"
-          rows={3}
-        />
-      </div>
-      
-      <div>
-        <label htmlFor="status" className="block text-sm font-medium">
-          Status
-        </label>
-        <select
-          id="status"
-          name="status"
-          value={formData.status}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border p-2"
-        >
-          <option value="draft">Draft</option>
-          <option value="active">Active</option>
-          <option value="closed">Closed</option>
-        </select>
-      </div>
-      
-      <button
-        type="submit"
-        className="bg-primary text-white px-4 py-2 rounded-md"
-        disabled={isCreating}
-      >
-        {isCreating ? 'Creating...' : 'Create Case'}
-      </button>
-    </form>
+    <button
+      type="submit"
+      className="bg-blue-500 text-white px-4 py-2 rounded-md"
+      disabled={pending}
+    >
+      {pending ? 'Creating...' : 'Create Client'}
+    </button>
   );
 }
 ```
 
-## Example: Single Entity Data Flow
+## Example 2: Server Component with Actions and Optimistic UI
 
-This example demonstrates the data flow for a single entity:
+A more complex example showing a Server Component that fetches data and a Client Component with optimistic updates:
 
-### 1. Server Component (Case Detail Page)
+### Server Action (case-actions.js)
 
 ```tsx
-// app/(authenticated)/[tenant]/cases/[id]/page.tsx
+'use server'
+
+import { withAuth } from '@/utils/with-auth';
+import { getCaseQuery, updateCaseQuery } from '@repo/database/queries/cases-queries';
+import { caseSchema } from '../schema';
+
+export const getCase = withAuth(async ({ db, user }, caseId) => {
+  // Get case with authorization check
+  const caseData = await getCaseQuery(db, caseId, user.id);
+  
+  if (!caseData) {
+    return { status: 'error', message: 'Case not found or access denied' };
+  }
+  
+  return { status: 'success', data: caseData };
+});
+
+export const updateCaseStatus = withAuth(async ({ db, user }, caseId, status) => {
+  // Validate status
+  if (!['draft', 'active', 'resolved', 'closed'].includes(status)) {
+    return { status: 'error', message: 'Invalid status' };
+  }
+  
+  try {
+    // Update case status
+    await updateCaseQuery(db, caseId, { status }, user.id);
+    
+    return { status: 'success' };
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
+});
+```
+
+### Server Component (CaseDetailPage.jsx)
+
+```tsx
+// app/(authenticated)/[tenant]/cases/[id]/page.jsx
 import { Suspense } from 'react';
-import { getCase } from '../../../features/cases/actions/get-case';
-import { CaseDetails } from '../../../features/cases/components/case-details';
-import { CaseDetailsSkeleton } from '../../../features/cases/components/skeletons';
+import { getCase } from '../../../features/cases/actions/case-actions';
+import { CaseDetail } from '../../../features/cases/components/case-detail';
+import { CaseSkeleton } from '../../../features/cases/components/skeletons';
 
 export default async function CaseDetailPage({ params }) {
-  // Get case data from server action
+  // Fetch case data using Server Action
   const response = await getCase(params.id);
   
   // Handle error case
@@ -439,289 +193,172 @@ export default async function CaseDetailPage({ params }) {
     );
   }
   
+  // Add document metadata
   return (
-    <div className="p-4">
-      <Suspense fallback={<CaseDetailsSkeleton />}>
-        {/* Pass initial data to Client Component */}
-        <CaseDetails initialCase={response.data} id={params.id} />
+    <>
+      <title>{response.data.title} | Lavel AI</title>
+      <meta name="description" content={`Details for case: ${response.data.title}`} />
+      
+      <Suspense fallback={<CaseSkeleton />}>
+        <CaseDetail initialCase={response.data} />
       </Suspense>
-    </div>
+    </>
   );
 }
 ```
 
-### 2. Server Action (Get Case)
-
-```tsx
-// app/(authenticated)/features/cases/actions/get-case.ts
-'use server'
-
-import { auth } from '@repo/auth/server';
-import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
-import { getCaseQuery } from '@repo/database/queries/cases-queries';
-import { normalizeCase } from '@repo/database/utils/normalize/case';
-import { captureError } from '@repo/observability/error';
-
-export async function getCase(id) {
-  try {
-    // Authentication check
-    const { userId } = await auth();
-    if (!userId) {
-      return { status: 'error', message: 'Unauthorized' };
-    }
-    
-    // Get tenant database client
-    const tenantDb = await getTenantDbClientUtil();
-    
-    // Map clerk ID to internal user ID
-    const user = await tenantDb.query.users.findFirst({
-      where: (users, { eq }) => eq(users.clerkId, userId)
-    });
-    
-    if (!user) {
-      return { status: 'error', message: 'User not found' };
-    }
-    
-    // Get case from database
-    const caseData = await getCaseQuery(tenantDb, id, user.id);
-    
-    if (!caseData) {
-      return { status: 'error', message: 'Case not found' };
-    }
-    
-    // Track view event
-    trackEvent('case_viewed', { caseId: id });
-    
-    // Normalize case
-    const normalizedCase = normalizeCase(caseData);
-    
-    return { status: 'success', data: normalizedCase };
-  } catch (error) {
-    console.error('Error fetching case:', error);
-    
-    captureError(error, {
-      context: 'getCase',
-      caseId: id
-    });
-    
-    return { status: 'error', message: 'Failed to fetch case' };
-  }
-}
-```
-
-### 3. Custom Hook for Single Entity
-
-```tsx
-// app/(authenticated)/features/cases/hooks/use-case.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCase, updateCase, deleteCase } from '../actions/cases';
-import { useParams, useRouter } from 'next/navigation';
-import { useToast } from '@repo/design-system/components/ui/toast';
-
-export function useCase(id, initialCase = null) {
-  const params = useParams();
-  const tenant = params.tenant;
-  const queryClient = useQueryClient();
-  const router = useRouter();
-  const { toast } = useToast();
-  
-  // Query for fetching case
-  const query = useQuery({
-    queryKey: ['case', tenant, id],
-    queryFn: async () => {
-      const response = await getCase(id);
-      if (response.status === 'error') {
-        throw new Error(response.message);
-      }
-      return response.data;
-    },
-    initialData: initialCase,
-    enabled: !!tenant && !!id,
-  });
-  
-  // Mutation for updating case
-  const updateMutation = useMutation({
-    mutationFn: (data) => updateCase(id, data),
-    onMutate: async (data) => {
-      // Cancel related queries
-      await queryClient.cancelQueries({ queryKey: ['case', tenant, id] });
-      
-      // Snapshot current value
-      const previousCase = queryClient.getQueryData(['case', tenant, id]);
-      
-      // Optimistically update
-      queryClient.setQueryData(['case', tenant, id], old => ({
-        ...old,
-        ...data,
-        updatedAt: new Date().toISOString()
-      }));
-      
-      return { previousCase };
-    },
-    onSuccess: () => {
-      toast({
-        title: "Case updated",
-        description: "Changes saved successfully"
-      });
-      
-      // Invalidate related queries
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant] });
-    },
-    onError: (error, _, context) => {
-      // Revert to previous value
-      queryClient.setQueryData(['case', tenant, id], context.previousCase);
-      
-      toast({
-        variant: "destructive",
-        title: "Error updating case",
-        description: error.message
-      });
-    },
-    onSettled: () => {
-      // Always refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ['case', tenant, id] });
-    }
-  });
-  
-  // Mutation for deleting case
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteCase(id),
-    onSuccess: () => {
-      toast({
-        title: "Case deleted",
-        description: "Case has been permanently removed"
-      });
-      
-      // Invalidate cases list
-      queryClient.invalidateQueries({ queryKey: ['cases', tenant] });
-      
-      // Redirect to cases list
-      router.push(`/${tenant}/cases`);
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error deleting case",
-        description: error.message
-      });
-    }
-  });
-  
-  return {
-    // Query data
-    case: query.data,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    
-    // Mutations
-    updateCase: updateMutation.mutate,
-    deleteCase: deleteMutation.mutate,
-    
-    // Mutation states
-    isUpdating: updateMutation.isPending,
-    isDeleting: deleteMutation.isPending
-  };
-}
-```
-
-### 4. Client Component Using Single Entity Hook
+### Client Component with Optimistic UI (CaseDetail.jsx)
 
 ```tsx
 'use client'
-// app/(authenticated)/features/cases/components/case-details.tsx
-import { useCase } from '../hooks/use-case';
 import { useState } from 'react';
+import { useOptimistic } from 'react';
+import { updateCaseStatus } from '../actions/case-actions';
 
-export function CaseDetails({ initialCase, id }) {
-  const { 
-    case: caseData, 
-    isLoading, 
-    isError, 
-    error,
-    updateCase,
-    deleteCase,
-    isUpdating,
-    isDeleting
-  } = useCase(id, initialCase);
+export function CaseDetail({ initialCase }) {
+  // Local state for case data
+  const [caseData, setCaseData] = useState(initialCase);
   
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    title: caseData?.title || '',
-    description: caseData?.description || '',
-    status: caseData?.status || 'draft'
-  });
+  // Optimistic state for status updates
+  const [optimisticStatus, updateOptimisticStatus] = useOptimistic(initialCase.status);
   
-  // Update form data when case changes
-  useEffect(() => {
-    if (caseData) {
-      setFormData({
-        title: caseData.title,
-        description: caseData.description,
-        status: caseData.status
-      });
-    }
-  }, [caseData]);
-  
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-  
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    updateCase(formData);
-    setIsEditing(false);
-  };
-  
-  const handleDeleteClick = () => {
-    if (confirm('Are you sure you want to delete this case?')) {
-      deleteCase();
+  // Handle status update
+  const handleStatusChange = async (newStatus) => {
+    // Update optimistically
+    updateOptimisticStatus(newStatus);
+    
+    // Perform actual update
+    const response = await updateCaseStatus(caseData.id, newStatus);
+    
+    // Update local state on success
+    if (response.status === 'success') {
+      setCaseData(prev => ({ ...prev, status: newStatus }));
     }
   };
-  
-  if (isLoading && !initialCase) {
-    return <p>Loading case details...</p>;
-  }
-  
-  if (isError) {
-    return (
-      <div className="p-4 bg-red-50 text-red-700 rounded">
-        Error loading case: {error.message}
-      </div>
-    );
-  }
-  
-  if (!caseData) {
-    return <p>Case not found</p>;
-  }
   
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{caseData.title}</h1>
-        <div className="space-x-2">
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className="px-3 py-1 bg-blue-500 text-white rounded"
-            disabled={isUpdating || isDeleting}
-          >
-            {isEditing ? 'Cancel' : 'Edit'}
-          </button>
-          <button
-            onClick={handleDeleteClick}
-            className="px-3 py-1 bg-red-500 text-white rounded"
-            disabled={isDeleting}
-          >
-            {isDeleting ? 'Deleting...' : 'Delete'}
-          </button>
+    <div className="p-6 bg-white rounded-lg shadow-sm">
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-2xl font-bold">{caseData.title}</h1>
+          <p className="text-gray-500">{caseData.description}</p>
+        </div>
+        
+        <div className="status-selector">
+          <span className="block text-sm font-medium mb-1">Status:</span>
+          <div className="flex items-center">
+            <span 
+              className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                statusColors[optimisticStatus] || 'bg-gray-100 text-gray-800'
+              }`}
+            >
+              {optimisticStatus.charAt(0).toUpperCase() + optimisticStatus.slice(1)}
+            </span>
+            
+            <select
+              value={optimisticStatus}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              className="ml-2 border rounded p-1 text-sm"
+            >
+              <option value="draft">Draft</option>
+              <option value="active">Active</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
         </div>
       </div>
       
-      {isEditing ? (
-        <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Rest of case details */}
+    </div>
+  );
+}
+
+const statusColors = {
+  draft: 'bg-yellow-100 text-yellow-800',
+  active: 'bg-blue-100 text-blue-800',
+  resolved: 'bg-green-100 text-green-800',
+  closed: 'bg-gray-100 text-gray-800'
+};
+```
+
+## Example 3: Form with Nested Components and useFormStatus
+
+A form with nested components that need access to form status:
+
+### Server Action (update-case.js)
+
+```tsx
+'use server'
+
+import { withAuth } from '@/utils/with-auth';
+import { updateCaseQuery } from '@repo/database/queries/cases-queries';
+import { caseUpdateSchema } from '../schema';
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+
+export const updateCase = withAuth(async ({ db, user }, prevState, formData) => {
+  // Extract case ID and form data
+  const caseId = formData.get('caseId');
+  if (!caseId) {
+    return 'Case ID is required';
+  }
+  
+  // Build data object from form data
+  const rawData = {};
+  formData.forEach((value, key) => {
+    if (key !== 'caseId') {
+      rawData[key] = value;
+    }
+  });
+  
+  // Validate data
+  const validationResult = caseUpdateSchema.safeParse(rawData);
+  if (!validationResult.success) {
+    return validationResult.error.flatten().formErrors.join(', ');
+  }
+  
+  try {
+    // Update case
+    await updateCaseQuery(db, caseId, validationResult.data, user.id);
+    
+    // Revalidate case page
+    revalidatePath(`/cases/${caseId}`);
+    
+    // Redirect to case detail page
+    redirect(`/cases/${caseId}`);
+    
+    // This will only run if redirect fails
+    return null;
+  } catch (error) {
+    return `Failed to update case: ${error.message}`;
+  }
+});
+```
+
+### Client Component with Nested Form Components (CaseEditForm.jsx)
+
+```tsx
+'use client'
+import { useState } from 'react';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { updateCase } from '../actions/update-case';
+
+export function CaseEditForm({ caseData }) {
+  // useActionState for form handling
+  const [error, formAction, isPending] = useActionState(updateCase, null);
+  
+  return (
+    <div className="p-6 bg-white rounded-lg shadow-sm">
+      <h2 className="text-xl font-bold mb-4">Edit Case</h2>
+      
+      <form action={formAction}>
+        {/* Hidden case ID */}
+        <input type="hidden" name="caseId" value={caseData.id} />
+        
+        <div className="space-y-6">
+          {/* Title field */}
           <div>
             <label htmlFor="title" className="block text-sm font-medium">
               Case Title
@@ -729,13 +366,13 @@ export function CaseDetails({ initialCase, id }) {
             <input
               id="title"
               name="title"
-              value={formData.title}
-              onChange={handleChange}
+              defaultValue={caseData.title}
               className="mt-1 block w-full rounded-md border p-2"
               required
             />
           </div>
           
+          {/* Description field */}
           <div>
             <label htmlFor="description" className="block text-sm font-medium">
               Description
@@ -743,798 +380,442 @@ export function CaseDetails({ initialCase, id }) {
             <textarea
               id="description"
               name="description"
-              value={formData.description}
-              onChange={handleChange}
+              defaultValue={caseData.description}
               className="mt-1 block w-full rounded-md border p-2"
-              rows={3}
+              rows={4}
             />
           </div>
           
-          <div>
-            <label htmlFor="status" className="block text-sm font-medium">
-              Status
-            </label>
-            <select
-              id="status"
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border p-2"
-            >
-              <option value="draft">Draft</option>
-              <option value="active">Active</option>
-              <option value="closed">Closed</option>
-            </select>
-          </div>
+          {/* Status field with custom component */}
+          <StatusSelect defaultValue={caseData.status} />
           
-          <button
-            type="submit"
-            className="bg-primary text-white px-4 py-2 rounded-md"
-            disabled={isUpdating}
-          >
-            {isUpdating ? 'Saving...' : 'Save Changes'}
-          </button>
-        </form>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-lg font-medium">Description</h2>
-            <p className="mt-1">{caseData.description || 'No description provided.'}</p>
-          </div>
-          
-          <div>
-            <h2 className="text-lg font-medium">Status</h2>
-            <span className={`inline-block px-2 py-1 rounded ${
-              caseData.status === 'active' ? 'bg-green-100 text-green-800' :
-              caseData.status === 'closed' ? 'bg-gray-100 text-gray-800' :
-              'bg-yellow-100 text-yellow-800'
-            }`}>
-              {caseData.status.charAt(0).toUpperCase() + caseData.status.slice(1)}
-            </span>
-          </div>
-          
-          <div>
-            <h2 className="text-lg font-medium">Created</h2>
-            <p className="mt-1">{new Date(caseData.createdAt).toLocaleString()}</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-```
-
-## Example: Related Entities Data Flow
-
-This example demonstrates how to handle related entities (cases and documents) using a compound hook:
-
-### 1. Compound Custom Hook
-
-```tsx
-// app/(authenticated)/features/cases/hooks/use-case-with-documents.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCase } from '../actions/get-case';
-import { getCaseDocuments, uploadDocument, deleteDocument } from '../actions/documents';
-import { useParams } from 'next/navigation';
-import { useToast } from '@repo/design-system/components/ui/toast';
-
-export function useCaseWithDocuments(id, initialCase = null, initialDocuments = []) {
-  const params = useParams();
-  const tenant = params.tenant;
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  
-  // Query for the case
-  const caseQuery = useQuery({
-    queryKey: ['case', tenant, id],
-    queryFn: async () => {
-      const response = await getCase(id);
-      if (response.status === 'error') {
-        throw new Error(response.message);
-      }
-      return response.data;
-    },
-    initialData: initialCase,
-    enabled: !!tenant && !!id,
-  });
-  
-  // Query for case documents
-  const documentsQuery = useQuery({
-    queryKey: ['case-documents', tenant, id],
-    queryFn: async () => {
-      const response = await getCaseDocuments(id);
-      if (response.status === 'error') {
-        throw new Error(response.message);
-      }
-      return response.data;
-    },
-    initialData: initialDocuments,
-    enabled: !!tenant && !!id,
-  });
-  
-  // Mutation for uploading document
-  const uploadMutation = useMutation({
-    mutationFn: (file) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('caseId', id);
-      return uploadDocument(formData);
-    },
-    onSuccess: () => {
-      toast({
-        title: "Document uploaded",
-        description: "Document has been uploaded successfully"
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ['case-documents', tenant, id] });
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Upload failed",
-        description: error.message
-      });
-    }
-  });
-  
-  // Mutation for deleting document
-  const deleteMutation = useMutation({
-    mutationFn: (documentId) => deleteDocument(documentId),
-    onMutate: async (documentId) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['case-documents', tenant, id] });
-      
-      // Snapshot current documents
-      const previousDocuments = queryClient.getQueryData(['case-documents', tenant, id]);
-      
-      // Optimistically remove document
-      queryClient.setQueryData(['case-documents', tenant, id], old => 
-        old.filter(doc => doc.id !== documentId)
-      );
-      
-      return { previousDocuments };
-    },
-    onSuccess: () => {
-      toast({
-        title: "Document deleted",
-        description: "Document has been removed"
-      });
-    },
-    onError: (error, _, context) => {
-      queryClient.setQueryData(['case-documents', tenant, id], context.previousDocuments);
-      
-      toast({
-        variant: "destructive",
-        title: "Delete failed",
-        description: error.message
-      });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['case-documents', tenant, id] });
-    }
-  });
-  
-  return {
-    // Case data
-    case: caseQuery.data,
-    isCaseLoading: caseQuery.isLoading,
-    isCaseError: caseQuery.isError,
-    caseError: caseQuery.error,
-    
-    // Documents data
-    documents: documentsQuery.data || [],
-    isDocumentsLoading: documentsQuery.isLoading,
-    isDocumentsError: documentsQuery.isError,
-    documentsError: documentsQuery.error,
-    
-    // Combined loading state
-    isLoading: caseQuery.isLoading || documentsQuery.isLoading,
-    
-    // Mutations
-    uploadDocument: uploadMutation.mutate,
-    deleteDocument: deleteMutation.mutate,
-    
-    // Mutation states
-    isUploading: uploadMutation.isPending,
-    isDeleting: deleteMutation.isPending
-  };
-}
-```
-
-### 2. Component Using Compound Hook
-
-```tsx
-'use client'
-// app/(authenticated)/features/cases/components/case-with-documents.tsx
-import { useCaseWithDocuments } from '../hooks/use-case-with-documents';
-
-export function CaseWithDocuments({ initialCase, initialDocuments, id }) {
-  const { 
-    case: caseData,
-    documents,
-    isLoading,
-    uploadDocument,
-    deleteDocument,
-    isUploading,
-    isDeleting
-  } = useCaseWithDocuments(id, initialCase, initialDocuments);
-  
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      uploadDocument(file);
-      e.target.value = ''; // Reset file input
-    }
-  };
-  
-  const handleDeleteClick = (documentId) => {
-    if (confirm('Are you sure you want to delete this document?')) {
-      deleteDocument(documentId);
-    }
-  };
-  
-  if (isLoading && !initialCase) {
-    return <p>Loading...</p>;
-  }
-  
-  return (
-    <div className="space-y-8">
-      {/* Case details section */}
-      <div className="bg-white p-6 rounded-lg shadow-sm">
-        <h1 className="text-2xl font-bold mb-4">{caseData?.title}</h1>
-        <p className="text-gray-700">{caseData?.description}</p>
-        <div className="mt-4">
-          <span className={`inline-block px-2 py-1 rounded ${
-            caseData?.status === 'active' ? 'bg-green-100 text-green-800' :
-            caseData?.status === 'closed' ? 'bg-gray-100 text-gray-800' :
-            'bg-yellow-100 text-yellow-800'
-          }`}>
-            {caseData?.status?.charAt(0).toUpperCase() + caseData?.status?.slice(1)}
-          </span>
-        </div>
-      </div>
-      
-      {/* Documents section */}
-      <div className="bg-white p-6 rounded-lg shadow-sm">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Documents</h2>
-          <label className="cursor-pointer bg-primary text-white px-4 py-2 rounded-md">
-            <span>{isUploading ? 'Uploading...' : 'Upload Document'}</span>
-            <input
-              type="file"
-              className="hidden"
-              onChange={handleFileChange}
-              disabled={isUploading}
-            />
-          </label>
+          {/* Form actions with proper form status */}
+          <FormActions />
         </div>
         
-        {documents.length === 0 ? (
-          <p className="text-gray-500">No documents attached to this case.</p>
-        ) : (
-          <ul className="divide-y">
-            {documents.map(doc => (
-              <li key={doc.id} className="py-3 flex justify-between items-center">
-                <div>
-                  <p className="font-medium">{doc.filename}</p>
-                  <p className="text-sm text-gray-500">
-                    Uploaded {new Date(doc.createdAt).toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex space-x-2">
-                  <a
-                    href={doc.url}
-                    download
-                    className="px-3 py-1 bg-blue-500 text-white rounded"
-                  >
-                    Download
-                  </a>
-                  <button
-                    onClick={() => handleDeleteClick(doc.id)}
-                    className="px-3 py-1 bg-red-500 text-white rounded"
-                    disabled={isDeleting === doc.id}
-                  >
-                    {isDeleting === doc.id ? 'Deleting...' : 'Delete'}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 text-red-700 rounded">
+            {error}
+          </div>
         )}
-      </div>
+      </form>
     </div>
   );
 }
-```
 
-## Example: Form with Data Normalization
-
-This example demonstrates how to implement a form that uses the normalization pipeline to ensure data quality:
-
-### 1. Server Action with Normalization Pipeline
-
-```typescript
-// app/(authenticated)/features/clients/actions/create-client.ts
-'use server'
-
-import { auth } from '@repo/auth/server';
-import { getTenantDbClientUtil } from '@/app/utils/get-tenant-db-connection';
-import { insertClientQuery } from '@repo/database/queries/clients-queries';
-import { clientPipeline } from '@repo/schema/pipeline/client-pipeline';
-import { trackEvent } from '@repo/analytics/events';
-import { captureError } from '@repo/observability/error';
-
-export async function createClient(formData: FormData) {
-  try {
-    // 1. Authentication check
-    const { userId } = await auth();
-    if (!userId) {
-      return { status: 'error', message: 'Unauthorized' };
-    }
-    
-    // 2. Get tenant database connection
-    const tenantDb = await getTenantDbClientUtil();
-    
-    // 3. Map Clerk ID to internal user ID
-    const user = await tenantDb.query.users.findFirst({
-      where: (users, { eq }) => eq(users.clerkId, userId)
-    });
-    
-    if (!user) {
-      return { status: 'error', message: 'User not found' };
-    }
-    
-    // 4. Extract form data
-    const rawData = Object.fromEntries(formData.entries());
-    
-    // 5. Process through normalization pipeline
-    const pipelineResult = await clientPipeline.process(rawData, {
-      userId: user.id,
-      source: 'client-form'
-    });
-    
-    // 6. Check for pipeline errors
-    if (pipelineResult.errors && pipelineResult.errors.length > 0) {
-      return {
-        status: 'error',
-        message: 'Invalid client data',
-        errors: pipelineResult.errors
-      };
-    }
-    
-    // 7. Insert normalized data
-    const normalizedData = pipelineResult.result;
-    const newClient = await insertClientQuery(tenantDb, {
-      ...normalizedData,
-      createdBy: user.id
-    });
-    
-    // 8. Track client creation event
-    trackEvent('client_created', {
-      clientId: newClient.id
-    });
-    
-    // 9. Return success response with normalization changes
-    return { 
-      status: 'success', 
-      data: newClient,
-      changes: pipelineResult.changes // Normalization changes for user feedback
-    };
-  } catch (error) {
-    // 10. Error handling
-    console.error('Error creating client:', error);
-    
-    captureError(error, {
-      context: 'createClient',
-      data: formData
-    });
-    
-    return { status: 'error', message: 'Failed to create client' };
-  }
+// Status select component
+function StatusSelect({ defaultValue }) {
+  return (
+    <div>
+      <label htmlFor="status" className="block text-sm font-medium">
+        Status
+      </label>
+      <select
+        id="status"
+        name="status"
+        defaultValue={defaultValue}
+        className="mt-1 block w-full rounded-md border p-2"
+      >
+        <option value="draft">Draft</option>
+        <option value="active">Active</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+      </select>
+    </div>
+  );
 }
-```
 
-### 2. Client Form Component
-
-```tsx
-'use client'
-// app/(authenticated)/features/clients/components/new-client-form.tsx
-import { useState } from 'react';
-import { createClient } from '../actions/create-client';
-import { useToast } from '@repo/design-system/components/ui/toast';
-import { useRouter } from 'next/navigation';
-
-export function NewClientForm() {
-  const { toast } = useToast();
-  const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    // other fields...
-  });
-  const [normalizationChanges, setNormalizationChanges] = useState([]);
-  
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setNormalizationChanges([]);
-    
-    try {
-      // Create FormData from form values
-      const formDataObj = new FormData();
-      Object.entries(formData).forEach(([key, value]) => {
-        formDataObj.append(key, value);
-      });
-      
-      // Submit to Server Action
-      const response = await createClient(formDataObj);
-      
-      if (response.status === 'error') {
-        toast({
-          variant: "destructive",
-          title: "Error creating client",
-          description: response.message
-        });
-        return;
-      }
-      
-      // Show normalization changes if any
-      if (response.changes && response.changes.length > 0) {
-        setNormalizationChanges(response.changes);
-        
-        toast({
-          title: "Data normalized",
-          description: "Some data was automatically formatted for consistency"
-        });
-      }
-      
-      // Success handling
-      toast({
-        title: "Client created",
-        description: `Client "${response.data.name}" created successfully`
-      });
-      
-      // Navigate to client details page
-      router.push(`/clients/${response.data.id}`);
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "An unexpected error occurred"
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+// Form actions component using useFormStatus
+function FormActions() {
+  // Get form status
+  const { pending } = useFormStatus();
   
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium">
-          Client Name
-        </label>
-        <input
-          id="name"
-          name="name"
-          value={formData.name}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border p-2"
-          required
-        />
-      </div>
-      
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium">
-          Email
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          value={formData.email}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border p-2"
-          required
-        />
-      </div>
-      
-      <div>
-        <label htmlFor="phone" className="block text-sm font-medium">
-          Phone
-        </label>
-        <input
-          id="phone"
-          name="phone"
-          value={formData.phone}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border p-2"
-        />
-      </div>
-      
-      <div>
-        <label htmlFor="address" className="block text-sm font-medium">
-          Address
-        </label>
-        <textarea
-          id="address"
-          name="address"
-          value={formData.address}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border p-2"
-          rows={3}
-        />
-      </div>
-      
-      {/* Display normalization changes if any */}
-      {normalizationChanges.length > 0 && (
-        <div className="bg-blue-50 p-3 rounded text-sm">
-          <p className="font-medium">Data was automatically formatted:</p>
-          <ul className="list-disc pl-5 mt-1">
-            {normalizationChanges.map((change, index) => (
-              <li key={index}>{change.field}: {change.original} → {change.normalized}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+    <div className="flex justify-end space-x-3">
+      <button
+        type="button"
+        className="px-4 py-2 border rounded-md"
+        disabled={pending}
+        onClick={() => window.history.back()}
+      >
+        Cancel
+      </button>
       
       <button
         type="submit"
-        className="bg-primary text-white px-4 py-2 rounded-md"
-        disabled={isSubmitting}
+        className="px-4 py-2 bg-blue-500 text-white rounded-md"
+        disabled={pending}
       >
-        {isSubmitting ? 'Creating...' : 'Create Client'}
+        {pending ? 'Saving...' : 'Save Changes'}
       </button>
-    </form>
+    </div>
   );
 }
 ```
 
-### 3. Normalization Pipeline Definition
+## Example 4: Data Fetching with use Hook
 
-```typescript
-// packages/schema/src/pipeline/client-pipeline.ts
-import { createTransformPipeline } from '../pipeline';
-import { clientSchema } from '../entities/client';
-import { ResilientNormalizer } from '../resilience/error-handler';
-import { monitorDataQuality } from '../monitoring';
-import { z } from 'zod';
+Using React 19's use hook to read resources in render:
 
-// Sanitization stage
-const sanitizeClientData = (data: any) => {
-  // Basic sanitization
-  const sanitized = { ...data };
-  
-  // Trim whitespace from string fields
-  Object.keys(sanitized).forEach(key => {
-    if (typeof sanitized[key] === 'string') {
-      sanitized[key] = sanitized[key].trim();
-    }
-  });
-  
-  // Sanitize HTML if present in description or notes
-  if (sanitized.notes) {
-    sanitized.notes = sanitizeHtml(sanitized.notes);
-  }
-  
-  return sanitized;
-};
+### Server Action to Provide Data Promise
 
-// Normalization stage
-const normalizeClientData = (data: any) => {
-  const normalized = { ...data };
-  
-  // Format name with title case
-  if (normalized.name) {
-    normalized.name = titleCase(normalized.name);
-  }
-  
-  // Format email as lowercase
-  if (normalized.email) {
-    normalized.email = normalized.email.toLowerCase();
-  }
-  
-  // Format phone number
-  if (normalized.phone) {
-    normalized.phone = formatPhoneNumber(normalized.phone);
-  }
-  
-  return normalized;
-};
+```tsx
+'use server'
 
-// Create the client pipeline
-export const clientPipeline = createTransformPipeline({
-  name: 'clientPipeline',
-  stages: [
-    {
-      name: 'sanitize',
-      transform: (data, context) => sanitizeClientData(data)
-    },
-    {
-      name: 'normalize',
-      transform: (data, context) => normalizeClientData(data)
-    },
-    {
-      name: 'validate',
-      transform: async (data, context) => {
-        const resilientValidator = new ResilientNormalizer({ 
-          strategy: 'use-partial',
-          logErrors: true
-        });
-        
-        const validationResult = await resilientValidator.normalize(clientSchema, data);
-        
-        if (!validationResult.success) {
-          console.warn('Validation errors:', validationResult.errors);
-        }
-        
-        return validationResult.result;
-      }
-    },
-    {
-      name: 'monitor',
-      transform: (data, context) => monitorDataQuality('client', data)
-    }
-  ],
-  resilienceOptions: {
-    strategy: 'use-partial',
-    logErrors: true
-  }
-});
-```
+import { withAuth } from '@/utils/with-auth';
+import { getCaseDocumentsQuery } from '@repo/database/queries/documents-queries';
 
-### 4. Schema Definition
-
-```typescript
-// packages/schema/src/entities/client.ts
-import { z } from 'zod';
-
-export const clientSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email format"),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  notes: z.string().optional(),
-  // other fields...
+export const getCaseDocuments = withAuth(async ({ db, user }, caseId) => {
+  const documents = await getCaseDocumentsQuery(db, caseId, user.id);
+  
+  return { status: 'success', data: documents };
 });
 
-export type ClientData = z.infer<typeof clientSchema>;
+// This function returns a promise that can be passed to the use hook
+export async function getCaseDocumentsPromise(caseId) {
+  const response = await getCaseDocuments(caseId);
+  
+  if (response.status === 'error') {
+    throw new Error(response.message);
+  }
+  
+  return response.data;
+}
 ```
 
-This example demonstrates a complete flow for a form that incorporates data normalization:
+### Client Component Using use Hook
 
-1. The user fills out the form with client information
-2. On submission, the data is sent to a Server Action
-3. The Server Action processes the data through the normalization pipeline:
-   - Sanitizes input to remove potentially harmful content
-   - Normalizes data formats (title case for names, lowercase for emails, etc.)
-   - Validates against the client schema
-   - Monitors data quality metrics
-4. If normalization changes data, these changes are returned to the client
-5. The UI shows the user what normalization changes were made
-6. The normalized data is stored in the database
+```tsx
+'use client'
+import { use, Suspense } from 'react';
+import { getCaseDocumentsPromise } from '../actions/document-actions';
 
-This approach ensures data quality and consistency while providing transparency to users about how their data is being processed.
+// Parent component with Suspense
+export function CaseDocuments({ caseId }) {
+  // Create documents promise
+  const documentsPromise = getCaseDocumentsPromise(caseId);
+  
+  return (
+    <div className="mt-8">
+      <h2 className="text-xl font-bold mb-4">Documents</h2>
+      
+      <Suspense fallback={<DocumentsSkeleton />}>
+        <DocumentsList documentsPromise={documentsPromise} />
+      </Suspense>
+    </div>
+  );
+}
+
+// Component that uses the promise with use hook
+function DocumentsList({ documentsPromise }) {
+  // Read the promise with use
+  const documents = use(documentsPromise);
+  
+  if (documents.length === 0) {
+    return <p>No documents attached to this case.</p>;
+  }
+  
+  return (
+    <ul className="space-y-2">
+      {documents.map(doc => (
+        <li key={doc.id} className="p-3 bg-gray-50 rounded flex justify-between">
+          <div>
+            <p className="font-medium">{doc.filename}</p>
+            <p className="text-sm text-gray-500">
+              Uploaded {new Date(doc.createdAt).toLocaleString()}
+            </p>
+          </div>
+          
+          <div>
+            <a
+              href={doc.url}
+              download
+              className="text-blue-500 hover:text-blue-700"
+            >
+              Download
+            </a>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DocumentsSkeleton() {
+  return (
+    <div className="space-y-2">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="h-16 bg-gray-100 rounded animate-pulse" />
+      ))}
+    </div>
+  );
+}
+```
+
+## Example 5: Context with React 19
+
+Using the new context syntax with React 19:
+
+### Context Provider Definition
+
+```tsx
+'use client'
+import { createContext, useState } from 'react';
+
+// Create the context
+export const ThemeContext = createContext('light');
+
+// Provider component
+export function ThemeProvider({ children, initialTheme = 'light' }) {
+  const [theme, setTheme] = useState(initialTheme);
+  
+  const toggleTheme = () => {
+    setTheme(current => current === 'light' ? 'dark' : 'light');
+  };
+  
+  return (
+    <ThemeContext value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext>
+  );
+}
+```
+
+### Using Context with use Hook
+
+```tsx
+'use client'
+import { use } from 'react';
+import { ThemeContext } from '../context/theme';
+
+function ThemedComponent() {
+  // Get theme from context
+  const { theme, toggleTheme } = use(ThemeContext);
+  
+  return (
+    <div className={`p-4 ${theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
+      <h2 className="text-xl font-bold">Themed Component</h2>
+      <p className="my-2">Current theme: {theme}</p>
+      
+      <button
+        onClick={toggleTheme}
+        className={`px-4 py-2 rounded ${
+          theme === 'dark' 
+            ? 'bg-white text-gray-800' 
+            : 'bg-gray-800 text-white'
+        }`}
+      >
+        Toggle Theme
+      </button>
+    </div>
+  );
+}
+```
+
+## Example 6: Ref as Prop
+
+Using React 19's ref as prop pattern instead of forwardRef:
+
+### Input Component with Ref as Prop
+
+```tsx
+'use client'
+// Before (with forwardRef)
+const Input = forwardRef(function Input({ label, ...props }, ref) {
+  return (
+    <div className="form-field">
+      <label className="block text-sm font-medium">{label}</label>
+      <input
+        ref={ref}
+        className="mt-1 block w-full rounded-md border p-2"
+        {...props}
+      />
+    </div>
+  );
+});
+
+// After (with ref as prop)
+function Input({ label, ref, ...props }) {
+  return (
+    <div className="form-field">
+      <label className="block text-sm font-medium">{label}</label>
+      <input
+        ref={ref}
+        className="mt-1 block w-full rounded-md border p-2"
+        {...props}
+      />
+    </div>
+  );
+}
+```
+
+### Using the Component with Ref
+
+```tsx
+'use client'
+import { useRef } from 'react';
+import { Input } from '../components/ui/input';
+
+function SearchForm() {
+  const inputRef = useRef(null);
+  
+  const handleFocus = () => {
+    inputRef.current?.focus();
+  };
+  
+  return (
+    <div className="p-4">
+      <Input
+        label="Search"
+        ref={inputRef}
+        placeholder="Search cases..."
+      />
+      
+      <button
+        type="button"
+        onClick={handleFocus}
+        className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-md"
+      >
+        Focus Search
+      </button>
+    </div>
+  );
+}
+```
+
+## Example 7: Resource Management
+
+Using React 19's resource management features:
+
+### Stylesheet Management
+
+```tsx
+function CaseDetailPage() {
+  return (
+    <div>
+      {/* High precedence styles loaded first */}
+      <link rel="stylesheet" href="/shared.css" precedence="high" />
+      
+      {/* Default precedence styles loaded next */}
+      <link rel="stylesheet" href="/case-detail.css" precedence="default" />
+      
+      {/* Inline styles with precedence */}
+      <style precedence="high">
+        {`
+          .case-detail-header { 
+            font-weight: bold;
+            color: #1a56db;
+            padding: 1rem 0;
+          }
+        `}
+      </style>
+      
+      <div className="case-detail">
+        <h1 className="case-detail-header">Case Details</h1>
+        {/* Content */}
+      </div>
+    </div>
+  );
+}
+```
+
+### Resource Preloading
+
+```tsx
+import { preload, preinit } from 'react-dom';
+
+function DashboardPage() {
+  // Preload resources
+  preload('/fonts/lavel-sans.woff2', { as: 'font' });
+  preinit('/scripts/charts.js', { as: 'script' });
+  
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      {/* Dashboard content */}
+    </div>
+  );
+}
+```
 
 ## Best Practices for Data Flow Implementation
 
-### 1. Server Components and Server Actions
+1. **Use withAuth for Server Actions**: Apply the withAuth utility to standardize authentication and error handling
 
-- **Use Server Components for Initial Data**: Fetch initial page data on the server for better performance
-- **Return Consistent Response Objects**: All Server Actions should return consistent response formats
-- **Handle Errors Properly**: Implement comprehensive error handling in all Server Actions
-- **Use Type Safety**: Leverage TypeScript for type safety throughout
-- **Validate Input Data**: Always validate input data before processing
-- **Authenticate First**: Always verify authentication at the beginning of each Server Action
-- **Normalize Data**: Process all input data through the normalization pipeline
+2. **Design Server Actions for useActionState**: Format your Server Action return values to work seamlessly with useActionState:
+   - Return `null` for success
+   - Return error message string for errors
+   - Return objects for complex data like normalization results
 
-### 2. Database Operations
+3. **Leverage Form Action Prop**: Use the form action prop for automatic form handling:
+   ```tsx
+   <form action={createEntity}>
+     {/* Form fields */}
+   </form>
+   ```
 
-- **Use Tenant-Specific Connections**: Always use `getTenantDbClientUtil()` for database operations
-- **Implement Query Functions**: Keep database query logic in dedicated query functions
-- **Map Clerk ID to Internal User ID**: Always map external auth IDs to internal user IDs
-- **Implement Authorization Checks**: Verify user access rights for data operations
-- **Use Transactions**: Wrap related operations in transactions when necessary
-- **Limit Query Results**: Add pagination or limits to avoid excessive data fetching
-- **Use Prepared Statements**: Prefer prepared statements to prevent SQL injection
+4. **Create Reusable Form Components**: Use useFormStatus for form components that need form state:
+   ```tsx
+   function SubmitButton() {
+     const { pending } = useFormStatus();
+     return (
+       <button type="submit" disabled={pending}>
+         {pending ? 'Submitting...' : 'Submit'}
+       </button>
+     );
+   }
+   ```
 
-### 3. Client-Side Data Management
+5. **Implement Optimistic Updates**: Use useOptimistic for immediate feedback:
+   ```tsx
+   const [optimisticValue, updateOptimisticValue] = useOptimistic(initialValue);
+   
+   const handleAction = async (newValue) => {
+     updateOptimisticValue(newValue);
+     await updateAction(id, newValue);
+   };
+   ```
 
-- **Create Custom Hooks**: Centralize data access logic in custom hooks
-- **Use React Query**: Leverage React Query for data fetching, caching, and synchronization
-- **Implement Optimistic Updates**: Use optimistic updates for better user experience
-- **Handle Loading and Error States**: Properly handle loading and error states in UI
-- **Use Toast Notifications**: Provide feedback for mutations with toast notifications
-- **Combine Related Data Fetching**: Use compound hooks for related data
-- **Prefetch Probable Next Data**: Implement prefetching for likely user paths
-- **Avoid Duplicate Queries**: Use centralized hooks to prevent duplicate network requests
+6. **Structure Components with Suspense**: Use Suspense boundaries for async operations:
+   ```tsx
+   <Suspense fallback={<LoadingSkeleton />}>
+     <ComponentUsingResource resourcePromise={promise} />
+   </Suspense>
+   ```
 
-### 4. Error Handling
+7. **Use Context Directly**: Use the new Context syntax for simpler provider components:
+   ```tsx
+   <UserContext value={{ user, setUser }}>
+     {children}
+   </UserContext>
+   ```
 
-- **Implement Comprehensive Error Tracking**: Use error tracking at all levels
-- **Use Error Boundaries**: Implement Error Boundaries for graceful degradation
-- **Provide User-Friendly Error Messages**: Display helpful error messages
-- **Log Errors Server-Side**: Log errors on the server for debugging
-- **Include Context in Error Reporting**: Add relevant context to error reports
-- **Handle Network Errors**: Implement proper handling for network failures
-- **Retry Critical Operations**: Implement retry logic for important operations
+8. **Manage Document Metadata**: Add metadata directly in components:
+   ```tsx
+   function EntityPage({ entity }) {
+     return (
+       <>
+         <title>{entity.name} | Lavel AI</title>
+         <meta name="description" content={entity.description} />
+         
+         {/* Page content */}
+       </>
+     );
+   }
+   ```
 
-### 5. Performance Optimization
+9. **Control Resource Loading**: Use precedence and preloading APIs:
+   ```tsx
+   <link rel="stylesheet" href="/styles.css" precedence="high" />
+   ```
 
-- **Implement Proper Caching**: Use appropriate caching strategies
-- **Limit Data Transfer**: Only fetch the data you need
-- **Use Pagination**: Implement pagination for large data sets
-- **Optimize Component Rendering**: Prevent unnecessary re-renders
-- **Implement Data Prefetching**: Prefetch data that users are likely to need
-- **Use Server-Side Rendering**: Leverage Server Components for initial rendering
-- **Implement Proper Cache Invalidation**: Update cache when data changes
-
-### 6. Security Best Practices
-
-- **Validate All Input**: Validate all input data server-side
-- **Implement Proper Authorization**: Check access rights for all operations
-- **Use Secure Database Connections**: Ensure database connections are secure
-- **Sanitize Output**: Sanitize data before returning to clients
-- **Implement Rate Limiting**: Protect APIs with rate limiting
-- **Use HTTPS**: Ensure all communication is encrypted
-- **Implement Proper Error Handling**: Avoid leaking sensitive information in errors
-
-### 2. Database Operations
-
-- **Use Tenant-Specific Connections**: Always use `getTenantDbClientUtil()` for database operations
-- **Implement Query Functions**: Keep database query logic in dedicated query functions
-- **Map Clerk ID to Internal User ID**: Always map external auth IDs to internal user IDs
-- **Implement Authorization Checks**: Verify user access rights for data operations
-- **Use Transactions**: Wrap related operations in transactions when necessary
-- **Limit Query Results**: Add pagination or limits to avoid excessive data fetching
-- **Use Prepared Statements**: Prefer prepared statements to prevent SQL injection
-
-### 3. Client-Side Data Management
-
-- **Create Custom Hooks**: Centralize data access logic in custom hooks
-- **Use React Query**: Leverage React Query for data fetching, caching, and synchronization
-- **Implement Optimistic Updates**: Use optimistic updates for better user experience
-- **Handle Loading and Error States**: Properly handle loading and error states in UI
-- **Use Toast Notifications**: Provide feedback for mutations with toast notifications
-- **Combine Related Data Fetching**: Use compound hooks for related data
-- **Prefetch Probable Next Data**: Implement prefetching for likely user paths
-- **Avoid Duplicate Queries**: Use centralized hooks to prevent duplicate network requests
-
-### 4. Error Handling
-
-- **Implement Comprehensive Error Tracking**: Use error tracking at all levels
-- **Use Error Boundaries**: Implement Error Boundaries for graceful degradation
-- **Provide User-Friendly Error Messages**: Display helpful error messages
-- **Log Errors Server-Side**: Log errors on the server for debugging
-- **Include Context in Error Reporting**: Add relevant context to error reports
-- **Handle Network Errors**: Implement proper handling for network failures
-- **Retry Critical Operations**: Implement retry logic for important operations
-
-### 5. Performance Optimization
-
-- **Implement Proper Caching**: Use appropriate caching strategies
-- **Limit Data Transfer**: Only fetch the data you need
-- **Use Pagination**: Implement pagination for large data sets
-- **Optimize Component Rendering**: Prevent unnecessary re-renders
-- **Implement Data Prefetching**: Prefetch data that users are likely to need
-- **Use Server-Side Rendering**: Leverage Server Components for initial rendering
-- **Implement Proper Cache Invalidation**: Update cache when data changes
-
-### 6. Security Best Practices
-
-- **Validate All Input**: Validate all input data server-side
-- **Implement Proper Authorization**: Check access rights for all operations
-- **Use Secure Database Connections**: Ensure database connections are secure
-- **Sanitize Output**: Sanitize data before returning to clients
-- **Implement Rate Limiting**: Protect APIs with rate limiting
-- **Use HTTPS**: Ensure all communication is encrypted
-- **Implement Proper Error Handling**: Avoid leaking sensitive information in errors
+10. **Handle Complex State with useActionState**: For forms with multiple steps or complex state:
+    ```tsx
+    const [state, formAction, isPending] = useActionState(
+      async (prevState, formData) => {
+        // Handle complex state transitions
+        return { ...prevState, step: prevState.step + 1 };
+      },
+      { step: 1, data: {} }
+    );
+    ```

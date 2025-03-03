@@ -1,7 +1,7 @@
 import { env } from '@/env';
 import { analytics } from '@repo/analytics/posthog/server';
 import { clerkClient } from '@repo/auth/server';
-import { parseError } from '@repo/observability/error';
+import { captureError } from '@repo/observability/error';
 import { log } from '@repo/observability/log';
 import { stripe } from '@repo/payments';
 import type { Stripe } from '@repo/payments';
@@ -99,7 +99,7 @@ export const POST = async (request: Request): Promise<Response> => {
 
     return NextResponse.json({ result: event, ok: true });
   } catch (error) {
-    const message = parseError(error);
+    const message = captureError(error);
 
     log.error(message);
 

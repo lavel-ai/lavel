@@ -1,6 +1,5 @@
 // apps/app/middleware.ts
 import { authMiddleware } from '@repo/auth/middleware';
-import { NextResponse } from 'next/server';
 import {
   noseconeMiddleware,
   noseconeOptions,

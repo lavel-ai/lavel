@@ -77,12 +77,14 @@ export class ResilientNormalizer {
             usedFallback: true,
           };
         } catch (partialError) {
-          // If even partial fails, fall back to defaults or original
-          return this.recoverFromError(
-            error, 
-            schema, 
-            data
-          );
+          // If even partial fails, fall back to the original data
+          // instead of recursively calling ourselves
+          return {
+            result: {} as Partial<T>, // Return empty object as a safe fallback
+            success: false,
+            errors: error,
+            usedFallback: true,
+          };
         }
 
       case 'use-original':

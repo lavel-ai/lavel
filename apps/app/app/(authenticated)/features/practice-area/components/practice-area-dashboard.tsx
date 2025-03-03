@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PracticeAreaOption } from '../actions/practice-area-actions';
 import { usePracticeAreas } from '../hooks/use-practice-areas';
 import { Button } from '@repo/design-system/components/ui/button';
@@ -25,12 +25,15 @@ import { Badge } from '@repo/design-system/components/ui/badge';
 import { Edit, MoreHorizontal, Search, Trash } from 'lucide-react';
 import { PracticeAreaDialog } from './practice-area-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@repo/design-system/components/ui/alert-dialog';
+import { useAnalytics } from '@repo/analytics/posthog/client';
 
 interface PracticeAreaDashboardProps {
   initialData?: PracticeAreaOption[];
 }
 
 export function PracticeAreaDashboard({ initialData }: PracticeAreaDashboardProps) {
+  const analytics = useAnalytics();
+  
   const { 
     practiceAreas, 
     isLoading, 
@@ -45,28 +48,83 @@ export function PracticeAreaDashboard({ initialData }: PracticeAreaDashboardProp
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+  // Track page view on mount
+  useEffect(() => {
+    analytics?.capture('page_viewed', {
+      page_name: 'practice_areas_dashboard',
+      entity_type: 'practice_area',
+      entity_count: initialData?.length || 0,
+    });
+  }, [analytics, initialData?.length]);
+
   // Filter practice areas based on search query
   const filteredPracticeAreas = practiceAreas.filter(area => 
     area.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (area.description && area.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  // Track search interactions
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    
+    if (query.length > 2) {
+      analytics?.capture('search_performed', {
+        search_type: 'practice_area',
+        search_query: query,
+        results_count: filteredPracticeAreas.length,
+      });
+    }
+  };
+
   const handleEdit = (practiceArea: PracticeAreaOption) => {
     setEditingPracticeArea(practiceArea);
     setIsEditDialogOpen(true);
+    
+    analytics?.capture('entity_action_initiated', {
+      action_type: 'edit',
+      entity_type: 'practice_area',
+      entity_id: practiceArea.id,
+    });
   };
 
   const handleDelete = (id: number) => {
     setDeletingId(id);
     setIsDeleteDialogOpen(true);
+    
+    analytics?.capture('entity_action_initiated', {
+      action_type: 'delete',
+      entity_type: 'practice_area',
+      entity_id: id,
+    });
   };
 
   const confirmDelete = async () => {
     if (deletingId) {
+      const practiceAreaToDelete = practiceAreas.find(area => area.id === deletingId);
+      
       await deletePracticeArea(deletingId);
       setIsDeleteDialogOpen(false);
       setDeletingId(null);
+      
+      // Track successful deletion
+      analytics?.capture('entity_action_completed', {
+        action_type: 'delete',
+        entity_type: 'practice_area',
+        entity_id: deletingId,
+        entity_name: practiceAreaToDelete?.name,
+      });
     }
+  };
+
+  const cancelDelete = () => {
+    analytics?.capture('entity_action_cancelled', {
+      action_type: 'delete',
+      entity_type: 'practice_area',
+      entity_id: deletingId,
+    });
+    
+    setIsDeleteDialogOpen(false);
+    setDeletingId(null);
   };
 
   return (
@@ -78,7 +136,7 @@ export function PracticeAreaDashboard({ initialData }: PracticeAreaDashboardProp
             placeholder="Buscar áreas de práctica..."
             className="pl-8"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
           />
         </div>
       </div>
@@ -163,10 +221,27 @@ export function PracticeAreaDashboard({ initialData }: PracticeAreaDashboardProp
       {editingPracticeArea && (
         <PracticeAreaDialog
           open={isEditDialogOpen}
-          onOpenChange={setIsEditDialogOpen}
+          onOpenChange={(open) => {
+            setIsEditDialogOpen(open);
+            if (!open) {
+              analytics?.capture('entity_action_cancelled', {
+                action_type: 'edit',
+                entity_type: 'practice_area',
+                entity_id: editingPracticeArea.id,
+              });
+            }
+          }}
           title="Editar Área de Práctica"
           practiceArea={editingPracticeArea}
-          onSuccess={() => setIsEditDialogOpen(false)}
+          onSuccess={(updatedPracticeArea) => {
+            setIsEditDialogOpen(false);
+            analytics?.capture('entity_action_completed', {
+              action_type: 'edit',
+              entity_type: 'practice_area',
+              entity_id: updatedPracticeArea.id,
+              entity_name: updatedPracticeArea.name,
+            });
+          }}
         />
       )}
 
@@ -180,7 +255,12 @@ export function PracticeAreaDashboard({ initialData }: PracticeAreaDashboardProp
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel 
+              disabled={isDeleting}
+              onClick={cancelDelete}
+            >
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction 
               onClick={confirmDelete}
               className="bg-red-500 hover:bg-red-600"
@@ -193,4 +273,4 @@ export function PracticeAreaDashboard({ initialData }: PracticeAreaDashboardProp
       </AlertDialog>
     </div>
   );
-} 
+}

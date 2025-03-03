@@ -1,19 +1,20 @@
 ---
 title: 'Data Flow Architecture'
-description: 'Overview of data flow in the Lavel AI platform'
+description: 'Overview of data flow in the Lavel AI platform with React 19'
 ---
 
 # Data Flow Architecture Overview
 
-This document provides a high-level overview of how data flows through the Lavel AI platform, from user interactions to database operations and back to the UI.
+This document provides a high-level overview of how data flows through the Lavel AI platform, from user interactions to database operations and back to the UI, utilizing React 19's modern patterns.
 
 ## Architecture Principles
 
-1. **Server-Centric Data Fetching**: Initial data is fetched on the server using Server Components and Server Actions
-2. **Client-Side Interactivity**: React Query provides client-side data management for interactive updates
-3. **Tenant Isolation**: All data operations respect tenant boundaries
-4. **Type Safety**: TypeScript ensures type safety throughout the data flow
-5. **Multi-level Caching**: Caching at server, client, and database levels improves performance
+1. **Server-Centric Data Fetching**: Initial data is fetched on the server using Server Components
+2. **Action-Driven Mutations**: Data mutations use React 19's Actions for automatic pending states and error handling
+3. **Optimistic Updates**: Immediate UI feedback with useOptimistic for a seamless user experience
+4. **Tenant Isolation**: All data operations respect tenant boundaries
+5. **Type Safety**: TypeScript ensures type safety throughout the data flow
+6. **Multi-level Caching**: Caching at server, client, and database levels improves performance
 
 ## System Context Diagram
 
@@ -28,10 +29,12 @@ The Lavel AI platform implements a layered approach to data flow:
 ### 1. User Interface Layer
 - **Server Components**: Render on the server with direct database access
 - **Client Components**: Handle user interactions and state updates
+- **Document Metadata**: Manage title, meta tags, and links within components
 
 ### 2. Data Management Layer
-- **Server Actions**: Handle data operations on the server
-- **React Query**: Manages client-side data fetching, caching, and synchronization
+- **Server Actions**: Handle data operations on the server with automatic pending states
+- **Action State**: Manage action states with useActionState for forms
+- **Optimistic Updates**: Provide immediate feedback with useOptimistic
 
 ### 3. Service Layer
 - **API Services**: Abstractions for data operations
@@ -50,16 +53,18 @@ A typical data request flows through the system as follows:
    - Authentication middleware validates the session
    - Server Components fetch initial data via Server Actions
    - HTML with data is sent to the browser
+   - Stylesheets and scripts are automatically managed with proper loading priorities
 
-2. **Tenant Identification**:
-   - The tenant is extracted from the request hostname
-   - The appropriate database connection is established
-   - All data operations are scoped to the tenant's database
+2. **Form Submissions**:
+   - Forms use the action prop with Server Actions
+   - Pending states are managed automatically
+   - Error states are captured and returned
+   - Forms reset automatically on success
 
 3. **Interactive Updates**:
-   - Client Components use React Query for data fetching and mutations
-   - Server Actions handle database operations
-   - React Query manages caching and UI updates
+   - Optimistic updates provide immediate UI feedback
+   - Server Actions process changes on the server
+   - The UI automatically reverts on error
 
 ## Cross-Cutting Concerns
 
@@ -68,34 +73,28 @@ Several cross-cutting concerns are integrated throughout the data flow:
 ### Authentication and Authorization
 - Clerk provides authentication services
 - Tenant routing ensures users access only their organization's data
-- User roles determine access permissions within a tenant
+- Authentication utilities reduce boilerplate in Server Actions
 
 ### Error Handling and Tracking
-- Comprehensive error tracking with Sentry
-- Standardized error responses from Server Actions
-- Error boundaries in the UI for graceful degradation
+- Error feedback is integrated directly into Actions
+- Error states are managed with useActionState
+- Error boundaries provide graceful degradation
 
-### Analytics and Monitoring
-- User actions are tracked via the analytics system
-- Performance metrics are collected at key points
-- Data quality is monitored through the normalization pipeline
-
-### Feature Flags
-- Feature availability is controlled through flags
-- Tenant-specific feature rollouts are supported
-- A/B testing capabilities are integrated
+### Metadata and Resource Management
+- Document metadata (title, meta tags) are managed within components
+- Stylesheets are automatically loaded with correct precedence
+- Resource preloading APIs optimize page performance
 
 ## Data Flow Guidelines
 
 When implementing data flow in the Lavel AI platform, follow these guidelines:
 
 1. **Use Server Components for Initial Data**: Fetch initial page data on the server using Server Components
-2. **Use Server Actions for Data Operations**: Implement data mutations and fetches as Server Actions
-3. **Implement Tenant Isolation**: All data operations must respect tenant boundaries
-4. **Leverage React Query for Client Updates**: Use React Query for client-side data management
-5. **Implement Proper Error Handling**: All data operations should include error handling
-6. **Include Analytics Tracking**: Track important user interactions and data operations
-7. **Apply Data Normalization**: Ensure data quality through the normalization pipeline
+2. **Use Server Actions for Data Operations**: Implement data mutations as Server Actions with automatic state handling
+3. **Implement Form Submissions with action prop**: Use the form action prop for automatic form handling
+4. **Use useOptimistic for Immediate Feedback**: Provide optimistic updates for a better user experience
+5. **Implement Proper Error Handling**: Leverage Action error states for comprehensive error management
+6. **Respect Tenant Isolation**: All data operations must respect tenant boundaries
 
 ## Next Steps
 
@@ -105,3 +104,4 @@ To learn more about specific aspects of the data flow architecture, explore thes
 - [Client-Side Data Flow](/data-flow/client-side)
 - [Cross-Cutting Concerns](/data-flow/cross-cutting)
 - [Data Flow Examples](/data-flow/examples)
+- [React 19 Features](/react19-features)

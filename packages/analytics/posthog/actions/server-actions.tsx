@@ -1,5 +1,5 @@
 // packages/analytics/posthog/actions/server-actions.tsx
-import 'server-only';
+'use server';
 import { analytics } from '../server';
 import { auth } from '@repo/auth/server';
 import { getTenantIdentifier } from '../../../../apps/app/app/utils/tenant-identifier';

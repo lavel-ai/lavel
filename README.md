@@ -10,7 +10,6 @@ This repository contains the codebase for Lavel AI, a multi-tenant SaaS platform
 *   **Neon:** Serverless PostgreSQL database provider (used for both the main application database and tenant databases).
 *   **Drizzle ORM:** A TypeScript ORM for interacting with the database.
 *   **Vercel:** Hosting platform for the Next.js applications.
-*   **Liveblocks:** (Optional, based on existing code) For real-time collaboration features (cursors, presence).
 *   **PostHog:** (Optional, based on existing code) Product analytics and feature flags.
 *   **Vitest:**  Testing framework.
 *   **Shadcn/ui:**  UI component library.

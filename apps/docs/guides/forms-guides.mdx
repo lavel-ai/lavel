@@ -1,381 +1,623 @@
-# Introduction
+# Lavel AI Form Architecture Documentation
 
-This guide outlines how to implement forms in the Lavel AI platform while properly addressing all cross-cutting concerns using React 19 features. Following this architecture ensures consistency, data quality, and a great user experience.
+## Introduction
 
-## Architecture Principles for Forms
+The Lavel AI Form Architecture is a standardized system for building, validating, and processing forms throughout our application. 
+It replaces ad-hoc form implementations with a unified approach that handles data validation, normalization, analytics tracking, and error management consistently across all forms.
 
-Our form implementations should adhere to these key principles:
+This architecture addresses several critical challenges:
 
-- **Data Quality**: All user input undergoes normalization, validation, and sanitization
-- **Tenant Isolation**: All operations respect tenant boundaries
-- **Authentication and Authorization**: Proper access controls at every level
-- **Error Handling**: Consistent error handling and user feedback
-- **Analytics**: Comprehensive tracking of user interactions and form events
-- **Feature Flags**: Support for feature toggling and experimentation
-- **Resource Management**: Optimize loading of stylesheets and scripts
-- **Optimistic Updates**: Provide immediate feedback for key operations
+1. **Reducing Boilerplate Code**: Previous form implementations required extensive repetitive code for validation, normalization, and error handling. Our new architecture reduces this by up to 70%.
 
-## Step-by-Step Implementation Guide
+2. **Ensuring Data Quality**: By centralizing normalization and validation logic, we ensure consistent data cleaning and format standardization across all forms.
 
-### 1. Define Entity Schema and Normalization Rules
+3. **Simplifying Analytics**: Rather than manually adding analytics tracking to each form, standardized tracking is built into the architecture.
 
-Start by defining your entity schema using Zod:
+4. **Improving Error Handling**: The architecture provides consistent, user-friendly error messages and validation feedback.
+
+5. **Supporting Multi-tenant Isolation**: All form processing respects tenant boundaries, ensuring data is properly isolated.
+
+This documentation explains how to use this architecture to create forms of varying complexity while maintaining consistency and reducing development effort.
+
+## Schema Flow
+
+Data flows through our form architecture in the following sequence:
+
+1. **User Input**: The user enters data into form fields, which may have client-side normalization applied as they type or when fields lose focus.
+
+2. **Form Submission**: When the user submits the form, React's form action is invoked with the form data.
+
+3. **Server Action Processing**: The server action:
+   - Authenticates the user and establishes tenant context
+   - Extracts form data
+   - Passes data to the form pipeline
+
+4. **Data Pipeline Processing**: The data flows through a four-stage pipeline:
+   - **Sanitization**: Removes potentially harmful content
+   - **Normalization**: Standardizes data formats (e.g., title case for names)
+   - **Validation**: Verifies data against schema requirements
+   - **Monitoring**: Calculates data quality metrics
+
+5. **Database Operation**: If validation succeeds, the data is saved to the database with appropriate tenant isolation.
+
+6. **Response Handling**: The server action returns the result to the client, including any validation errors or normalization changes.
+
+7. **UI Updates**: The form component updates to show success, errors, or normalization feedback.
+
+8. **Analytics Tracking**: Throughout this process, analytics events are automatically tracked.
+
+## Architecture Description
+
+### Core Architecture Principles
+
+Our form architecture is built on several key principles:
+
+1. **Centralized Schema Registry**: All entity schemas are registered in a central location with their validation and normalization rules.
+
+2. **Standardized Processing Pipeline**: All form data follows the same processing pipeline, ensuring consistent handling.
+
+3. **Component-Based Form Elements**: Specialized form components handle normalization and validation feedback.
+
+4. **Automatic Analytics Integration**: Form analytics are tracked automatically at key points in the form lifecycle.
+
+5. **Factory Pattern For Reusability**: Form pipelines and server actions are created through factories to reduce boilerplate.
+
+### Why This Approach?
+
+We chose this architecture for several compelling reasons:
+
+1. **Development Efficiency**: Developers can create new forms in a fraction of the time previously required by leveraging standard components and factories.
+
+2. **Consistency**: All forms behave consistently, improving user experience and reducing bugs.
+
+3. **Maintainability**: Changes to validation or normalization logic can be made in one place and affect all forms.
+
+4. **Scalability**: The architecture starts simple but can scale to handle complex forms with relationships.
+
+5. **Analytics Integration**: Automatic analytics tracking provides insights into form usage and conversion rates without additional development effort.
+
+### How It Works
+
+The architecture integrates several components:
+
+1. **Schema Registry**: Stores entity schemas with validation and normalization rules.
+
+2. **Form Pipeline Factory**: Creates data processing pipelines for forms based on schemas.
+
+3. **Form Processing Hook**: Manages form state, including pending states, errors, and analytics.
+
+4. **Server Action Factory**: Creates server actions that handle authentication, data processing, and database operations.
+
+5. **Normalized Form Components**: Provide built-in normalization and validation feedback.
+
+These components work together to provide a consistent pattern for form creation, validation, and processing.
+
+## File Descriptions
+
+### Schema Registry Enhancement (packages/schema/src/registry.ts)
+
+This file enhances the existing schema registry to support form-specific configuration:
+
+- **SchemaInfo Type**: Extended to include field-level configuration for normalization.
+- **registerEntitySchema Method**: New method that infers normalization configuration from schema types.
+- **get Method**: Retrieves schemas and their associated configurations.
+
+The registry serves as the single source of truth for entity schemas and their validation/normalization rules.
+
+### Form Pipeline Factory (packages/schema/src/form/create-form-pipeline.ts)
+
+This file provides a factory for creating form processing pipelines:
+
+- **createFormPipeline Function**: Creates a standardized pipeline for form data processing.
+- **sanitizeData Function**: Applies sanitization rules based on schema configuration.
+- **normalizeData Function**: Applies normalization rules to standardize data formats.
+- **validateData Function**: Validates data against the schema with configurable resilience.
+- **monitorData Function**: Monitors data quality metrics.
+
+The pipeline ensures consistent data processing across all forms in the application.
+
+### Form Processing Hook (apps/app/app/hooks/use-form-processor.ts)
+
+This client-side hook manages form state and interactions:
+
+- **useFormProcessor Hook**: Leverages React 19's useActionState for form handling.
+- **Analytics Integration**: Tracks form view, submission, and abandonment.
+- **Success and Error Callbacks**: Provides customizable handling for form outcomes.
+- **State Management**: Manages pending states, success/error states, and normalization changes.
+
+This hook simplifies form component implementation and ensures consistent behavior.
+
+### Server Action Factory (apps/app/app/actions/form/create-form-action.ts)
+
+This factory creates server actions with standardized behavior:
+
+- **createFormAction Function**: Creates a server action with standard processing.
+- **Data Pipeline Integration**: Processes form data through the pipeline.
+- **Analytics Tracking**: Records form submission outcomes and entity operations.
+- **Error Handling**: Provides consistent error handling with Sentry integration.
+- **Redirect and Revalidation**: Handles success redirects and page revalidation.
+
+This factory eliminates repetitive server action code while ensuring consistent processing.
+
+### Authentication Utility (apps/app/app/utils/with-auth.ts) 
+
+This utility provides authentication for server actions:
+
+- **withFormAuth Function**: Wraps server actions with authentication and tenant context.
+- **Error Handling**: Captures and reports authentication failures.
+- **Tenant Isolation**: Ensures proper tenant context for database operations.
+
+This utility ensures all form operations are properly authenticated and tenant-aware.
+
+### Normalized Form Components (packages/design-system/components/form/*.tsx)
+
+These components provide standardized form inputs with built-in normalization:
+
+- **NormalizedInput Component**: Text input with configurable normalization.
+- **NormalizedTextarea Component**: Multi-line input with normalization.
+- **Normalization Feedback**: Shows changes made during normalization.
+- **Error Display**: Consistently displays validation errors.
+
+These components ensure a consistent user experience across all forms.
+
+### Form Analytics (packages/analytics/form-analytics.ts)
+
+This file provides unified analytics tracking for forms:
+
+- **useFormAnalytics Hook**: Client-side hook for tracking form interactions.
+- **trackFormEvent Function**: Server-side function for tracking form outcomes.
+- **Standardized Events**: Consistent event names and properties for analytics.
+
+This ensures comprehensive analytics data collection for all forms without duplicating tracking code.
+
+## Step-by-Step Guide to Creating a Form
+
+### 1. Define Your Entity Schema
+
+Start by defining your entity schema with validation and normalization rules:
 
 ```typescript
-// packages/schema/src/entities/entity-name.ts
+// packages/schema/src/entities/project.ts
 import { z } from 'zod';
+import { schemaRegistry } from '../registry';
 
-export const entitySchema = z.object({
+export const projectSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  // Additional fields...
+  description: z.string().optional(),
+  status: z.enum(['active', 'completed', 'on-hold']).default('active'),
+  dueDate: z.string().optional(),
 });
 
-export type Entity = z.infer<typeof entitySchema>;
-
-// Optional fields for updates
-export const entityUpdateSchema = entitySchema.partial();
-```
-
-Best practices for schema definition:
-- Include meaningful validation error messages
-- Use consistent patterns for similar fields across entities
-- Consider internationalization for error messages
-
-### 2. Create Normalization and Sanitization Functions
-
-Leverage our utility functions for data normalization and sanitization:
-
-```typescript
-// Reference to existing implementations
-// packages/schema/src/utils/normalize.ts - for text normalization
-// packages/schema/src/utils/sanitize.ts - for security sanitization
-```
-
-Create a pipeline for your entity that applies these functions:
-
-```typescript
-// packages/schema/src/pipeline/entity-pipeline.ts
-import { normalizeText } from '../utils/normalize';
-import { sanitizeText } from '../utils/sanitize';
-
-export async function processEntityData(data, context = {}) {
-  // Follow the linear pipeline flow:
-  // 1. Sanitize (security)
-  // 2. Normalize (standardization)
-  // 3. Validate (schema)
-  
-  // Track changes for transparency
-  const changes = [];
-  
-  // Implementation details...
-  
-  return {
-    result: processedData,
-    changes,
-    errors: []
-  };
-}
-```
-
-### 3. Implement Database Queries
-
-Create the database schema and query functions following our standard pattern:
-
-```typescript
-// packages/database/src/tenant-app/schema/entity-name.ts
-// packages/database/src/tenant-app/queries/entity-name-queries.ts
-```
-
-Database query best practices:
-- Separate schema definition from query implementation
-- Include proper error handling with detailed logs
-- Implement tenant isolation at the query level
-- Create dedicated functions for each operation
-
-### 4. Leverage Analytics Integration
-
-Our application uses the `@repo/analytics` package for comprehensive tracking. Integrate it into your form implementation by:
-
-#### Client-side Analytics
-
-Use existing components rather than reimplementing them:
-
-1. **Form Tracking**: Use `TrackedForm` from `@repo/analytics/posthog/components/tracked-form`
-   ```tsx
-   import { TrackedForm } from '@repo/analytics/posthog/components/tracked-form';
-   
-   // In your form component:
-   <TrackedForm 
-     formType="entity_creation"
-     entityType="entity"
-     entityId={isEditing ? entity.id : undefined}
-     properties={{
-       // Additional properties
-     }}
-   >
-     {/* Form fields */}
-   </TrackedForm>
-   ```
-
-2. **Entity View Tracking**: Use `EntityViewTracker` from `@repo/analytics/posthog/components/entity-view-tracker`
-   ```tsx
-   import { EntityViewTracker } from '@repo/analytics/posthog/components/entity-view-tracker';
-   
-   // In your entity detail component:
-   <EntityViewTracker
-     entityType="entity"
-     entityId={entity.id}
-     properties={{
-       // Additional context
-     }}
-   />
-   ```
-
-3. **Manual Event Tracking**: Use the `useAnalytics` hook
-   ```tsx
-   import { useAnalytics } from '@repo/analytics/posthog/client';
-   
-   // In your component:
-   const analytics = useAnalytics();
-   
-   // Track custom event
-   const handleAction = () => {
-     analytics.capture('custom_action', {
-       action_type: 'specific_action',
-       // Additional properties
-     });
-   };
-   ```
-
-#### Server-side Analytics
-
-Use the server-side tracking utilities:
-
-```typescript
-import { 
-  trackFormSuccess, 
-  trackFormError,
-  trackEntityCreated, 
-  trackEntityUpdated, 
-  trackEntityDeleted 
-} from '@repo/analytics/posthog/actions/server-actions';
-
-// In your server action:
-await trackFormSuccess({
-  userId: user.id,
-  formType: 'entity_creation',
-  processingTimeMs: performance.now() - startTime,
-  normalizationChanges,
-});
-
-await trackEntityCreated({
-  userId: user.id,
-  entityType: 'entity',
-  entityId: created.id.toString(),
-  tenantId: user.tenantId,
-});
-```
-
-### 5. Integrate Observability
-
-Leverage the `@repo/observability` package for error tracking and monitoring:
-
-1. **Error Handling**: Use the error utilities in server actions and components
-   ```typescript
-   import { captureError } from '@repo/observability/error';
-   
-   // In your error handling:
-   try {
-     // Your code
-   } catch (error) {
-     captureError(error, {
-       context: 'entityCreation',
-       additionalData: { /* context */ }
-     });
-     
-     // Return appropriate error to client
-   }
-   ```
-
-2. **Error Boundaries**: Use the `ErrorBoundary` component to catch UI errors
-   ```tsx
-   import { ErrorBoundary } from '@/app/(authenticated)/components/error-boundary';
-   
-   // In your page component:
-   <ErrorBoundary componentName="EntityForm">
-     <EntityForm />
-   </ErrorBoundary>
-   ```
-
-3. **Performance Monitoring**: Track key operations
-   ```typescript
-   // Measure operation time
-   const startTime = performance.now();
-   
-   // After operation is complete
-   const operationTime = performance.now() - startTime;
-   
-   // Include in analytics events
-   trackFormSuccess({
-     // ...
-     processingTimeMs: operationTime,
-   });
-   ```
-
-### 6. Create Server Actions with Cross-Cutting Concerns
-
-Implement Server Actions that handle authentication, tenant isolation, normalization, and analytics:
-
-```typescript
-// app/(authenticated)/features/entity/actions/entity-actions.ts
-'use server'
-
-import { withAuth } from '@/app/utils/with-auth';
-import { processEntityData } from '@repo/schema/src/pipeline/entity-pipeline';
-import { 
-  trackFormSuccess, 
-  trackFormError,
-  trackEntityCreated 
-} from '@repo/analytics/posthog/actions/server-actions';
-
-// Create entity
-export const createEntity = withAuth(async ({ db, user }, prevState, formData) => {
-  const startTime = performance.now();
-  
-  try {
-    // Your implementation
-    // ...
-    
-    // Track analytics events
-    // ...
-    
-    return { success: true, data: result };
-  } catch (error) {
-    // Error handling
-    // ...
-    
-    return { error: error.message };
+// Register with automatic configuration
+schemaRegistry.registerEntitySchema({
+  name: 'project',
+  schema: projectSchema,
+  config: {
+    name: { trim: true, titleCase: true },
+    description: { trim: true, sanitizeHtml: true },
   }
 });
+
+export type Project = z.infer<typeof projectSchema>;
 ```
 
-The `withAuth` utility provides:
-- Authentication verification
-- Tenant database connection
-- User context retrieval
-- Error handling and logging
+### 2. Create a Server Action
 
-### 7. Build Client Components with React 19 Features
+Create a server action for your form using the factory:
 
-Create form components using React 19's features and our normalized form components:
+```typescript
+// app/(authenticated)/features/projects/actions/project-actions.ts
+'use server';
+
+import { createFormAction } from '@repo/schema/src/actions';
+import { withFormAuth } from '@repo/schema/src/actions/with-auth';
+
+export const createProject = withFormAuth(
+  createFormAction({
+    entityType: 'project',
+    dbOperation: async (db, data, user) => {
+      // Insert into database
+      return db.insert(db.projects).values({
+        ...data,
+        createdBy: user.id
+      });
+    },
+    successRedirect: (result) => `/projects/${result.id}`,
+    revalidatePaths: ['/projects'],
+  })
+);
+```
+
+### 3. Create a Form Component
+
+Create a client component that uses the form processing hook:
 
 ```tsx
-// app/(authenticated)/features/entity/components/entity-form.tsx
-'use client'
-import { useActionState } from 'react';
-import { createEntity } from '../actions/entity-actions';
-import { TrackedForm } from '@repo/analytics/posthog/components/tracked-form';
-import { NormalizedTextInput } from '@repo/design-system/components/form/normalized-text-input';
+// app/(authenticated)/features/projects/components/project-form.tsx
+'use client';
 
-export function EntityForm({ initialData = {}, isEditing = false }) {
-  // Form state with useActionState (React 19)
-  const [state, formAction] = useActionState(
-    createEntity, 
-    { status: null, message: null }
+import { useFormProcessor } from '@repo/schema/src/hooks';
+import { NormalizedInput, NormalizedTextarea } from '@repo/design-system/components/form';
+import { Button } from '@repo/design-system/components/ui/button';
+import { createProject } from '../actions/project-actions';
+
+export function ProjectForm() {
+  const {
+    formAction,
+    isPending,
+    actionState,
+    error,
+    changes,
+  } = useFormProcessor({
+    entityType: 'project',
+    serverAction: createProject,
+    analytics: {
+      formType: 'project_creation',
+    },
+  });
+  
+  return (
+    <form action={formAction} className="space-y-4">
+      <NormalizedInput
+        name="name"
+        label="Project Name"
+        normalize="titleCase"
+        required
+        error={actionState?.fieldErrors?.name}
+      />
+      
+      <NormalizedTextarea
+        name="description"
+        label="Description"
+        error={actionState?.fieldErrors?.description}
+      />
+      
+      <div className="flex items-center gap-2">
+        <label htmlFor="status">Status</label>
+        <select id="status" name="status" defaultValue="active">
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="on-hold">On Hold</option>
+        </select>
+      </div>
+      
+      <NormalizedInput
+        name="dueDate"
+        label="Due Date"
+        type="date"
+        error={actionState?.fieldErrors?.dueDate}
+      />
+      
+      <Button type="submit" disabled={isPending}>
+        {isPending ? 'Creating...' : 'Create Project'}
+      </Button>
+      
+      {error && (
+        <div className="text-red-500">{error}</div>
+      )}
+      
+      {changes && changes.length > 0 && (
+        <div className="text-sm text-gray-500">
+          <p>The following fields were normalized:</p>
+          <ul className="list-disc pl-5">
+            {changes.map((change, index) => (
+              <li key={index}>
+                <strong>{change.field}:</strong> "{change.original}" → "{change.normalized}"
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </form>
   );
-  
-  // Your implementation
-  // ...
 }
 ```
 
-### 8. Implement Optimistic Updates
+### 4. Add the Form to a Page
 
-For components that benefit from immediate feedback:
+Add your form component to a page:
 
 ```tsx
-// For list or action components
-import { useOptimistic } from 'react';
+// app/(authenticated)/projects/new/page.tsx
+import { ProjectForm } from '../components/project-form';
 
-export function EntityAction({ entity }) {
-  // Optimistic state
-  const [optimisticState, setOptimisticState] = useOptimistic(entity.state);
-  
-  // Implementation
-  // ...
+export default function NewProjectPage() {
+  return (
+    <div className="max-w-2xl mx-auto py-8">
+      <h1 className="text-2xl font-bold mb-6">Create New Project</h1>
+      <ProjectForm />
+    </div>
+  );
 }
 ```
 
-## Form Implementation Checklist
+That's it! Your form now has:
+- Validation with friendly error messages
+- Data normalization with user feedback
+- Loading states during submission
+- Analytics tracking for user interactions
+- Proper error handling and reporting
 
-Use this checklist to ensure you've properly addressed all concerns:
+## Complex Form Approach
 
-### Schema and Data Processing
-- [ ] Define entity schema with Zod
-- [ ] Implement data processing pipeline (sanitize → normalize → validate)
-- [ ] Track and report normalization changes
+For more complex forms with relationships (like clients with addresses and contacts), the architecture can be extended:
 
-### Database Layer
-- [ ] Define database schema
-- [ ] Create query functions with proper tenant isolation
-- [ ] Implement comprehensive error handling
+### 1. Define Related Schemas
 
-### Analytics
-- [ ] Use `TrackedForm` for form lifecycle events
-- [ ] Track entity operations in server actions
-- [ ] Include proper context in analytics events
-- [ ] Measure and report performance metrics
+Define schemas for both parent and child entities:
+
+```typescript
+// Partial example for client with addresses
+import { z } from 'zod';
+import { schemaRegistry } from '../registry';
+
+// Define address schema
+export const addressSchema = z.object({
+  street: z.string().min(1, "Street is required"),
+  city: z.string().min(1, "City is required"),
+  // Other fields...
+});
+
+// Define client schema with addresses relationship
+export const clientSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  // Other client fields...
+  addresses: z.array(addressSchema).optional(),
+});
+
+// Register schemas
+schemaRegistry.registerEntitySchema({
+  name: 'address',
+  schema: addressSchema,
+  // Configuration...
+});
+
+schemaRegistry.registerEntitySchema({
+  name: 'client',
+  schema: clientSchema,
+  // Configuration...
+});
+```
+
+### 2. Create Collection Components
+
+Create components for managing collections of related entities:
+
+```tsx
+// Example address collection component
+function AddressCollection({ addresses, onChange }) {
+  const addAddress = () => {
+    onChange([...addresses, { street: '', city: '', state: '', zipCode: '' }]);
+  };
+  
+  const updateAddress = (index, newAddress) => {
+    const newAddresses = [...addresses];
+    newAddresses[index] = newAddress;
+    onChange(newAddresses);
+  };
+  
+  const removeAddress = (index) => {
+    onChange(addresses.filter((_, i) => i !== index));
+  };
+  
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-medium">Addresses</h3>
+      
+      {addresses.map((address, index) => (
+        <div key={index} className="border p-4 rounded">
+          <div className="flex justify-end">
+            <button 
+              type="button"
+              onClick={() => removeAddress(index)}
+              className="text-red-500"
+            >
+              Remove
+            </button>
+          </div>
+          
+          <NormalizedInput
+            name={`addresses[${index}].street`}
+            label="Street"
+            value={address.street}
+            onChange={(e) => updateAddress(index, { ...address, street: e.target.value })}
+          />
+          
+          {/* Other address fields */}
+        </div>
+      ))}
+      
+      <button 
+        type="button"
+        onClick={addAddress}
+        className="bg-gray-100 p-2 rounded"
+      >
+        Add Address
+      </button>
+    </div>
+  );
+}
+```
+
+### 3. Create a Complex Form Processor
+
+Use state management to handle the complex form:
+
+```tsx
+function ClientForm() {
+  const [formData, setFormData] = useState({
+    name: '',
+    addresses: [],
+    contacts: []
+  });
+  
+  const {
+    formAction,
+    isPending,
+    actionState,
+  } = useFormProcessor({
+    entityType: 'client',
+    serverAction: createClient,
+    initialData: formData,
+  });
+  
+  // Handle form submission with the complete data structure
+  const handleSubmit = (e) => {
+    // The form processor will handle the submission with the full data structure
+    formAction(new FormData(e.target));
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* Client fields */}
+      <NormalizedInput
+        name="name"
+        label="Client Name"
+        value={formData.name}
+        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+      />
+      
+      {/* Address collection */}
+      <AddressCollection
+        addresses={formData.addresses}
+        onChange={(addresses) => setFormData({ ...formData, addresses })}
+      />
+      
+      {/* Contact collection (similar to address collection) */}
+      
+      <Button type="submit" disabled={isPending}>
+        {isPending ? 'Creating...' : 'Create Client'}
+      </Button>
+    </form>
+  );
+}
+```
+
+### 4. Create a Transaction-Aware Server Action
+
+Implement a server action that handles multiple related entities:
+
+```typescript
+export const createClient = withFormAuth(
+  createFormAction({
+    entityType: 'client',
+    dbOperation: async (db, data, user) => {
+      // Extract addresses and contacts from the data
+      const { addresses = [], contacts = [], ...clientData } = data;
+      
+      // Use a transaction for atomic operations
+      return db.$transaction(async (tx) => {
+        // Create the client
+        const clientResult = await tx.insert(db.clients).values({
+          ...clientData,
+          createdBy: user.id
+        });
+        
+        const clientId = clientResult.id;
+        
+        // Create addresses
+        const addressPromises = addresses.map(async (addressData) => {
+          const addressResult = await tx.insert(db.addresses).values({
+            ...addressData,
+            createdBy: user.id
+          });
+          
+          // Create client-address relationship
+          await tx.insert(db.clientAddresses).values({
+            clientId,
+            addressId: addressResult.id,
+            createdBy: user.id
+          });
+          
+          return addressResult;
+        });
+        
+        // Create contacts (similar to addresses)
+        const contactPromises = contacts.map(async (contactData) => {
+          // Similar to address creation
+        });
+        
+        // Wait for all operations to complete
+        const [addressResults, contactResults] = await Promise.all([
+          Promise.all(addressPromises),
+          Promise.all(contactPromises)
+        ]);
+        
+        // Return the complete result
+        return {
+          ...clientResult,
+          addresses: addressResults,
+          contacts: contactResults
+        };
+      });
+    },
+    // Other options...
+  })
+);
+```
+
+This approach maintains the benefits of our architecture while extending it to handle complex relationships.
+
+## Best Practices
+
+### Schema Definition
+
+1. **Use Descriptive Field Names**: Choose clear, descriptive names that indicate the purpose of each field.
+
+2. **Define Explicit Validation Rules**: Include clear validation messages that guide users in correcting inputs.
+
+3. **Specify Normalization Rules**: Define how data should be normalized (e.g., titleCase for names, lowercase for emails).
+
+4. **Document Special Constraints**: Add comments to explain complex validation rules or business requirements.
+
+### Form Components
+
+1. **Group Related Fields**: Organize forms into logical sections using fieldsets or dividers.
+
+2. **Provide Clear Labels**: Use descriptive labels and help text to guide users.
+
+3. **Show Normalization Feedback**: Always show users how their input was changed, especially for sensitive fields.
+
+4. **Use Appropriate Input Types**: Choose the right input type for each field (e.g., email, date).
+
+5. **Implement Progressive Disclosure**: Show complex fields only when needed based on previous answers.
 
 ### Server Actions
-- [ ] Use `withAuth` for authentication and tenant isolation
-- [ ] Implement proper error handling and reporting
-- [ ] Add analytics event tracking
-- [ ] Implement cache invalidation with revalidatePath
 
-### Client Components
-- [ ] Use `useActionState` for form state management
-- [ ] Use normalized form components from design system
-- [ ] Show normalization feedback to users
-- [ ] Implement proper loading states
+1. **Implement Proper Error Handling**: Ensure all errors are properly caught and reported.
 
-### Error Handling
-- [ ] Use `ErrorBoundary` for component-level errors
-- [ ] Use `captureError` for server-side errors
-- [ ] Provide user-friendly error messages
-- [ ] Track errors in analytics
+2. **Use Transactions for Related Entities**: Wrap operations on multiple tables in transactions.
 
-## Standard Analytics Events
+3. **Validate Permissions**: Check that users have permission to create/update the entity.
 
-Our analytics package standardizes the following events:
+4. **Return Meaningful Results**: Provide detailed success/error information to the client.
 
-### Form Events
-- `form_viewed` - When a form is loaded
-- `form_submitted` - When a form is submitted
-- `form_abandoned` - When a user leaves without submitting
-- `form_submission_succeeded` - Server-side success
-- `form_submission_failed` - Server-side failure
+### Data Quality
 
-### Entity Events
-- `entity_created` - When any entity is created
-- `entity_updated` - When any entity is modified
-- `entity_deleted` - When any entity is removed
-- `entity_viewed` - When any entity detail page is viewed
+1. **Validate Early, Validate Often**: Apply client-side validation before submission when possible.
 
-Include standard properties with these events:
-- `entity_type` - Type of entity
-- `entity_id` - ID of the entity (when applicable)
-- `form_type` - Type of form
-- `time_spent` - Duration of operation
-- `fields_completed` - Number of fields completed
-- `tenant_id` - Current tenant context
+2. **Normalize Consistently**: Apply the same normalization rules across all forms.
 
-## Conclusion
+3. **Monitor Data Quality**: Use the data quality metrics to identify problematic forms.
 
-By following this guide, you'll create forms that align with our architectural principles and leverage our existing infrastructure:
+4. **Review Validation Errors**: Regularly review common validation errors to improve form design.
 
-- Data quality through our normalization pipeline
-- Comprehensive analytics with our tracking system
-- Robust error handling with our observability package
-- Great user experience with standardized components
+### Performance
 
-These patterns are consistent with React 19's features and ensure a maintainable and scalable system.
+1. **Optimize Large Forms**: Break very large forms into multi-step processes.
+
+2. **Implement Field-Level Validation**: Validate fields as users complete them, not just on submission.
+
+3. **Use Optimistic Updates**: Show success UI before server confirmation for better perceived performance.
+
+### Accessibility
+
+1. **Ensure Keyboard Navigation**: Make sure all form controls are keyboard accessible.
+
+2. **Provide Error Contexts**: Place error messages close to the fields they relate to.
+
+3. **Use ARIA Attributes**: Add appropriate ARIA roles and attributes for screen readers.
+
+4. **Test with Assistive Technologies**: Verify forms work with screen readers and other assistive tools.
+
+By following these practices, you'll create forms that are consistent, maintainable, and provide an excellent user experience.

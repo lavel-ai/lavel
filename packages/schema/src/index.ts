@@ -6,3 +6,4 @@ export * from './pipeline';
 export * from './monitoring';
 export * from './events';
 export * from './config/normalization.config';
+export * from './form';

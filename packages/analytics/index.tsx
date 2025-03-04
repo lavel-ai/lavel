@@ -4,6 +4,8 @@ import { keys } from './keys';
 import { PostHogProvider } from './posthog/client';
 import { VercelAnalytics } from './vercel';
 
+export * from './form/form-analytics';
+
 type AnalyticsProviderProps = {
   readonly children: ReactNode;
 };

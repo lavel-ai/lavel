@@ -835,6 +835,205 @@ Your current implementation with `useActionState` and a custom `handleSubmit` fu
 
 ---
 
+_**User**_
+
+I want to test this form on this page @page.tsx @practice-area-form.tsx 
+
+---
+
+_**Assistant**_
+
+I see you want to test the `PracticeAreaFormSimplified` component in your page. First, let me analyze the form implementation which uses a custom `useFormProcessor` hook - this is actually a better pattern than what we were using before.
+
+Let's first check the `useFormProcessor` hook:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "use-form-processor" • **1** results</summary>
+        
+| File |
+|------|
+| `undefined` |
+
+</details>
+
+---
+
+_****_
+
+Read file: apps/app/app/hooks/use-form-processor.ts
+
+---
+
+_****_
+
+
+
+Now let's fix the linter errors in the practice area form and then integrate it into the page. First, let's fix the form component:
+
+---
+
+_****_
+
+```diff
+  import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@repo/design-system/components/ui/card';
+  import { createPracticeArea } from '../actions/create-practice-area';
++ import { useState } from 'react';
+  
+  export function PracticeAreaFormSimplified() {
++   // Form field states
++   const [name, setName] = useState('');
++   const [description, setDescription] = useState('');
++   
+    const {
+      formAction,
+      },
+      onSuccess: () => {
+-       // You could show a success toast here
++       // Reset form
++       setName('');
++       setDescription('');
+      },
+    });
++   
++   // Handle form submission
++   const handleSubmit = async (formData: FormData) => {
++     // Ensure the latest state is included in the form data
++     formData.set('name', name);
++     formData.set('description', description);
++     
++     // Let the action handle the rest
++     return formAction(formData);
++   };
+    
+    return (
+        </CardHeader>
+        
+-       <form action={formAction}>
++       <form action={handleSubmit}>
+          <CardContent className="space-y-4">
+            <NormalizedTextInput
+-             name="name"
+              label="Name"
+-             normalize="titleCase"
++             value={name}
++             onChange={(value: string) => setName(value)}
++             required
+              placeholder="e.g. Corporate Law"
+-             required
+              error={actionState?.fieldErrors?.name}
+            />
+            
+            <NormalizedTextarea
+-             name="description"
+              label="Description"
+-             normalize="trim"
++             value={description}
++             onChange={(value: string) => setDescription(value)}
+              placeholder="Describe this practice area..."
+-             rows={4}
+              error={actionState?.fieldErrors?.description}
+            />
+```
+
+---
+
+_****_
+
+
+
+Now let's integrate the form into the practice area page:
+
+---
+
+_****_
+
+```diff
+- 
++ 'use server';
++ 
++ import { Suspense } from 'react';
++ import { getPracticeAreas } from '../features/practice-area/actions/get-practice-area';
++ import { PracticeAreaDashboard } from '../features/practice-area/components/practice-area-dashboard';
++ import { PracticeAreasSkeleton } from '../features/practice-area/components/skeletons';
++ import { NewPracticeAreaButton } from '../features/practice-area/components/new-practice-area-button';
++ import { Card, CardContent, CardHeader, CardTitle } from '@repo/design-system/components/ui/card';
++ import {
++   Breadcrumb,
++   BreadcrumbItem,
++   BreadcrumbLink,
++   BreadcrumbList,
++   BreadcrumbSeparator,
++ } from '@repo/design-system/components/ui/breadcrumb';
++ import { Home } from 'lucide-react';
++ import { PracticeAreaFormSimplified } from '../features/practice-area/components/practice-area-form';
++ 
++ export default async function PracticeAreaPage() {
++   // Fetch initial data using Server Action
++   const response = await getPracticeAreas();
++   
++   const initialData = response.status === 'success' 
++     ? response.data 
++     : [];
++   
++   return (
++     <div className="container mx-auto p-4 space-y-6">
++       <div className="flex justify-between items-center">
++         <div className="space-y-2">
++           <Breadcrumb>
++             <BreadcrumbList>
++               <BreadcrumbItem>
++                 <BreadcrumbLink href="/"><Home className="h-4 w-4" /></BreadcrumbLink>
++               </BreadcrumbItem>
++               <BreadcrumbSeparator />
++               <BreadcrumbItem>
++                 <BreadcrumbLink href="/practice-area">Áreas de Práctica</BreadcrumbLink>
++               </BreadcrumbItem>
++             </BreadcrumbList>
++           </Breadcrumb>
++           <h1 className="text-2xl font-bold">Áreas de Práctica</h1>
++           <p className="text-gray-500">Gestione las áreas de práctica de su bufete</p>
++         </div>
++         <NewPracticeAreaButton />
++       </div>
++       
++       {/* Test Form Section */}
++       <Card>
++         <CardHeader>
++           <CardTitle>Test Practice Area Form</CardTitle>
++         </CardHeader>
++         <CardContent>
++           <PracticeAreaFormSimplified />
++         </CardContent>
++       </Card>
++       
++       <Card>
++         <CardHeader>
++           <CardTitle>Áreas de Práctica</CardTitle>
++         </CardHeader>
++         <CardContent>
++           <Suspense fallback={<PracticeAreasSkeleton />}>
++             {/* Pass initial data to Client Component */}
++             <PracticeAreaDashboard initialData={initialData} />
++           </Suspense>
++         </CardContent>
++       </Card>
++     </div>
++   );
++ } 
+```
+
+---
+
+_****_
+
+
+
+---
+
 
 
 ---

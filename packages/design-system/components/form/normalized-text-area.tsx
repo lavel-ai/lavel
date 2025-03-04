@@ -1,15 +1,13 @@
-// packages/design-system/components/form/normalized-input.tsx
-'use client';
-
-import React, { useRef, useState, useEffect } from 'react';
+// packages/design-system/components/form/normalized-textarea.tsx
+import React, { useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { Input } from '../ui/input';
+import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { normalizeText } from '@repo/schema/src/utils/normalize';
 
-export type NormalizeType = 'trim' | 'titleCase' | 'uppercase' | 'lowercase' | 'none';
+type NormalizeType = 'trim' | 'none';
 
-interface NormalizedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface NormalizedTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   name: string;
   label?: string;
   normalize?: NormalizeType;
@@ -17,11 +15,11 @@ interface NormalizedInputProps extends React.InputHTMLAttributes<HTMLInputElemen
   showChanges?: boolean;
   className?: string;
   labelClassName?: string;
-  inputClassName?: string;
+  textareaClassName?: string;
   errorClassName?: string;
 }
 
-export function NormalizedInput({
+export function NormalizedTextarea({
   name,
   label,
   normalize = 'trim',
@@ -29,48 +27,39 @@ export function NormalizedInput({
   showChanges = true,
   className,
   labelClassName,
-  inputClassName,
+  textareaClassName,
   errorClassName,
   ...props
-}: NormalizedInputProps) {
+}: NormalizedTextareaProps) {
   const { pending } = useFormStatus();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [originalValue, setOriginalValue] = useState<string>('');
   const [normalized, setNormalized] = useState(false);
   
   // Store original value on focus
   const handleFocus = () => {
-    if (inputRef.current) {
-      setOriginalValue(inputRef.current.value);
+    if (textareaRef.current) {
+      setOriginalValue(textareaRef.current.value);
       setNormalized(false);
     }
   };
   
   // Apply normalization on blur
   const handleBlur = () => {
-    if (!inputRef.current || normalize === 'none') return;
+    if (!textareaRef.current || normalize === 'none') return;
     
-    const value = inputRef.current.value;
+    const value = textareaRef.current.value;
     let normalizedValue = value;
     
     switch (normalize) {
       case 'trim':
         normalizedValue = normalizeText.trim(value);
         break;
-      case 'titleCase':
-        normalizedValue = normalizeText.titleCase(value);
-        break;
-      case 'uppercase':
-        normalizedValue = normalizeText.uppercase(value);
-        break;
-      case 'lowercase':
-        normalizedValue = normalizeText.lowercase(value);
-        break;
     }
     
     // Only update if value changed
     if (normalizedValue !== value) {
-      inputRef.current.value = normalizedValue;
+      textareaRef.current.value = normalizedValue;
       setNormalized(true);
     }
   };
@@ -81,11 +70,11 @@ export function NormalizedInput({
       setNormalized(false);
     };
     
-    const inputElement = inputRef.current;
-    if (inputElement) {
-      inputElement.addEventListener('input', handleInput);
+    const textareaElement = textareaRef.current;
+    if (textareaElement) {
+      textareaElement.addEventListener('input', handleInput);
       return () => {
-        inputElement.removeEventListener('input', handleInput);
+        textareaElement.removeEventListener('input', handleInput);
       };
     }
   }, []);
@@ -98,14 +87,14 @@ export function NormalizedInput({
         </Label>
       )}
       
-      <Input
-        ref={inputRef}
+      <Textarea
+        ref={textareaRef}
         id={name}
         name={name}
         onFocus={handleFocus}
         onBlur={handleBlur}
         disabled={pending}
-        className={inputClassName}
+        className={textareaClassName}
         {...props}
       />
       

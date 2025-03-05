@@ -1,7 +1,7 @@
 // // app/lib/query-client.ts
 // import { QueryClient } from '@tanstack/react-query';
 // import { parseError } from '@repo/observability/error';
-// import { useAnalytics } from '@repo/analytics/posthog/client';
+// import { useAnalytics } from '@repo/analytics';
 
 // // Function to track query errors
 // export const trackQueryError = (error: unknown, queryKey: unknown[]) => {

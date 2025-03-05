@@ -10,8 +10,6 @@ import {
   import { relations } from 'drizzle-orm';
   import { clientContacts } from './client-contacts-schema';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-import { z } from 'zod';
-import { schemaTransformers } from '../utils/text-normalization';
 
 // --- Validation Helpers ---
 const normalizeText = {
@@ -58,16 +56,7 @@ export type InsertContact = typeof contacts.$inferInsert;
 
 // --- Validation Schemas ---
 // Base contact schema with validation
-export const contactSchema = createInsertSchema(contacts, {
-  contactName: schemaTransformers.name,
-  role: z.string().optional().transform(normalizeText.titleCase),
-  primaryPhone: schemaTransformers.phone,
-  extension: z.string().optional().transform(ext => ext?.trim()),
-  secondaryPhone: schemaTransformers.phone.optional(),
-  email: schemaTransformers.email,
-  preferredContactMethod: z.enum(['phone', 'email', 'any']).optional().default('any'),
-  isPrimary: z.boolean().optional().default(false),
-});
+export const contactSchema = createInsertSchema(contacts);
 
 // Schema for selecting contacts
 export const contactSelectSchema = createSelectSchema(contacts); 

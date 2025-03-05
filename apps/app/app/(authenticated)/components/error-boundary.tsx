@@ -2,7 +2,7 @@
 'use client';
 import { Component, ReactNode } from 'react';
 import { parseError } from '@repo/observability/error';
-import { useAnalytics } from '@repo/analytics/posthog/client';
+import { useAnalytics } from '@repo/analytics';
 
 interface ErrorBoundaryProps {
   componentName: string;

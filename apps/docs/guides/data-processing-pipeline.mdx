@@ -1,0 +1,324 @@
+# Lavel AI Data Processing Pipeline
+
+## Introduction
+
+The Data Processing Pipeline is a core component of the Lavel AI architecture, responsible for transforming raw input data into validated, normalized, and structured data ready for database operations. This guide explains how the pipeline works, how to configure it, and how to extend it for custom use cases.
+
+## Pipeline Architecture
+
+The pipeline follows a sequential processing model:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Raw Input Data  │────▶│ Sanitization    │────▶│ Normalization   │────▶│ Validation      │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+                                                                                │
+                                                                                │
+┌─────────────────┐                                                             │
+│ Processed Data  │◀────────────────────────────────────────────────────────────┘
+└─────────────────┘
+```
+
+### Pipeline Stages
+
+1. **Sanitization**: Removes potentially harmful content from string inputs
+2. **Normalization**: Transforms data into a consistent format (e.g., email to lowercase)
+3. **Validation**: Ensures data meets schema requirements using Zod
+
+## Pipeline Context
+
+Each pipeline execution includes a context object that provides metadata about the operation:
+
+```typescript
+export type PipelineContext = {
+  userId: string;
+  tenantId?: string;
+  source: string;
+  operation?: string;
+  startTime?: number;
+  [key: string]: any;
+};
+```
+
+This context is used for:
+- Analytics tracking
+- Error reporting
+- Performance monitoring
+- Audit logging
+
+## Pipeline Results
+
+The pipeline returns a structured result object:
+
+```typescript
+export type ProcessResult<T> = {
+  result: T;                        // Processed data
+  errors?: string[];                // Validation errors
+  fieldErrors?: Record<string, string[]>;  // Field-specific errors
+  changes: Array<{                  // Normalization changes
+    field: string;
+    original: any;
+    normalized: any;
+  }>;
+  metadata: {                       // Processing metadata
+    processingTimeMs: number;
+    source: string;
+    operation?: string;
+    [key: string]: any;
+  };
+};
+```
+
+## Creating a Pipeline
+
+The pipeline is created using the `createFormPipeline` factory:
+
+```typescript
+import { createFormPipeline } from '@repo/schema/src/form/create-form-pipeline';
+
+const { processData } = createFormPipeline<UserData>({
+  schemaKey: 'userSchema',
+  customNormalizers: {
+    name: (value) => value.trim().replace(/\s+/g, ' ')
+  },
+  resilienceStrategy: 'use-partial'
+});
+
+// Use the pipeline
+const result = await processData(rawData, context);
+```
+
+## Configuration Options
+
+The pipeline factory accepts these options:
+
+```typescript
+type PipelineOptions<T> = {
+  schemaKey: string;                // Schema to use for validation
+  version?: string;                 // Schema version
+  customNormalizers?: Record<string, (value: any) => any>;  // Custom normalizers
+  resilienceStrategy?: 'use-partial' | 'use-default' | 'use-original' | 'reject';
+  defaultValues?: Partial<T>;       // Default values for missing fields
+};
+```
+
+### Resilience Strategies
+
+- **use-partial**: Continue with partial data if some fields fail validation
+- **use-default**: Use default values for fields that fail validation
+- **use-original**: Keep original values for fields that fail normalization
+- **reject**: Reject the entire submission if any field fails validation
+
+## Schema Configuration
+
+The pipeline uses schemas from the schema registry:
+
+```typescript
+// Define a schema with normalization hints
+registerEntitySchema('userSchema', {
+  schema: z.object({
+    name: z.string().min(2).max(100),
+    email: z.string().email(),
+    age: z.number().min(18).optional(),
+  }),
+  normalization: {
+    name: { trim: true, titleCase: true },
+    email: { lowercase: true, trim: true }
+  }
+});
+```
+
+## Built-in Normalizers
+
+The pipeline includes these built-in normalizers:
+
+- **trim**: Removes leading/trailing whitespace
+- **lowercase**: Converts text to lowercase
+- **uppercase**: Converts text to uppercase
+- **titleCase**: Capitalizes first letter of each word
+- **removeSpaces**: Removes all spaces
+- **digitsOnly**: Keeps only digits
+- **alphanumericOnly**: Keeps only letters and numbers
+
+## Custom Normalizers
+
+You can define custom normalizers for specific fields:
+
+```typescript
+const { processData } = createFormPipeline<UserData>({
+  schemaKey: 'userSchema',
+  customNormalizers: {
+    phoneNumber: (value) => {
+      if (typeof value !== 'string') return value;
+      return value.replace(/[^0-9]/g, '');
+    }
+  }
+});
+```
+
+## Error Handling
+
+The pipeline provides detailed error information:
+
+```typescript
+const result = await processData(rawData, context);
+
+if (result.errors) {
+  console.error('Validation failed:', result.errors);
+  console.log('Field errors:', result.fieldErrors);
+}
+```
+
+## Tracking Changes
+
+The pipeline tracks all normalization changes:
+
+```typescript
+const result = await processData(rawData, context);
+
+console.log('Changes made during normalization:');
+result.changes.forEach(change => {
+  console.log(`Field: ${change.field}`);
+  console.log(`Original: ${change.original}`);
+  console.log(`Normalized: ${change.normalized}`);
+});
+```
+
+## Performance Monitoring
+
+The pipeline includes performance metrics:
+
+```typescript
+const result = await processData(rawData, context);
+
+console.log(`Processing time: ${result.metadata.processingTimeMs}ms`);
+```
+
+## Integration with Form Actions
+
+The pipeline is integrated with the Form Factory System:
+
+```typescript
+// In createFormAction
+const processResult = await processData(rawData, pipelineContext);
+
+// Track pipeline performance
+await trackPerformanceMetric(
+  userId,
+  tenantId,
+  'form_pipeline_processing',
+  performance.now() - pipelineStartTime,
+  { entityType, schemaKey }
+);
+```
+
+## Examples
+
+### Basic Usage
+
+```typescript
+// Define schema
+registerEntitySchema('contactSchema', {
+  schema: z.object({
+    name: z.string().min(2).max(100),
+    email: z.string().email(),
+    message: z.string().min(10).max(1000)
+  }),
+  normalization: {
+    name: { trim: true, titleCase: true },
+    email: { lowercase: true, trim: true },
+    message: { trim: true }
+  }
+});
+
+// Create pipeline
+const { processData } = createFormPipeline<ContactForm>({
+  schemaKey: 'contactSchema'
+});
+
+// Process data
+const result = await processData({
+  name: '  john smith  ',
+  email: 'JOHN@EXAMPLE.COM  ',
+  message: 'Hello, I would like to get in touch.'
+}, {
+  userId: 'user123',
+  tenantId: 'tenant456',
+  source: 'contact_form'
+});
+
+// Result:
+// {
+//   result: {
+//     name: 'John Smith',
+//     email: 'john@example.com',
+//     message: 'Hello, I would like to get in touch.'
+//   },
+//   changes: [
+//     { field: 'name', original: '  john smith  ', normalized: 'John Smith' },
+//     { field: 'email', original: 'JOHN@EXAMPLE.COM  ', normalized: 'john@example.com' }
+//   ],
+//   metadata: {
+//     processingTimeMs: 5,
+//     source: 'contact_form'
+//   }
+// }
+```
+
+### Complex Form with Custom Normalizers
+
+```typescript
+// Define schema
+registerEntitySchema('orderSchema', {
+  schema: z.object({
+    customerName: z.string().min(2),
+    phoneNumber: z.string().min(10),
+    items: z.array(z.object({
+      productId: z.string(),
+      quantity: z.number().min(1),
+      notes: z.string().optional()
+    })).min(1)
+  }),
+  normalization: {
+    customerName: { trim: true, titleCase: true }
+  }
+});
+
+// Create pipeline with custom normalizers
+const { processData } = createFormPipeline<OrderData>({
+  schemaKey: 'orderSchema',
+  customNormalizers: {
+    phoneNumber: (value) => {
+      if (typeof value !== 'string') return value;
+      return value.replace(/[^0-9]/g, '');
+    },
+    items: (items) => {
+      if (!Array.isArray(items)) return items;
+      return items.map(item => ({
+        ...item,
+        notes: item.notes?.trim() || ''
+      }));
+    }
+  }
+});
+
+// Process data
+const result = await processData({
+  customerName: 'jane doe',
+  phoneNumber: '(555) 123-4567',
+  items: [
+    { productId: 'prod1', quantity: 2, notes: '  Gift wrap  ' },
+    { productId: 'prod2', quantity: 1 }
+  ]
+}, {
+  userId: 'user123',
+  tenantId: 'tenant456',
+  source: 'order_form'
+});
+
+// Result will have normalized data with tracked changes
+```
+
+## Conclusion
+
+The Data Processing Pipeline provides a robust foundation for handling form data in the Lavel AI application. By centralizing data processing logic, we ensure consistent validation, normalization, and error handling across all forms.

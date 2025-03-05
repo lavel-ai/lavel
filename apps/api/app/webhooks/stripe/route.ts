@@ -1,5 +1,5 @@
 import { env } from '@/env';
-import { analytics } from '@repo/analytics/posthog/server';
+import { analytics } from '@repo/analytics/server';
 import { clerkClient } from '@repo/auth/server';
 import { captureError } from '@repo/observability/error';
 import { log } from '@repo/observability/log';

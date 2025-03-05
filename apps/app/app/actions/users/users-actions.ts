@@ -5,6 +5,12 @@ import { users } from "@repo/database/src/tenant-app/schema";
 import { auth } from "@repo/auth/server";
 import { eq } from "drizzle-orm";
 
+/**
+ * Server action that retrieves the internal user ID for a given Clerk user ID.
+ *
+ * @returns Promise<string | null> The internal user ID, or null if not found.
+ */
+
 export async function getInternalUserId(): Promise<string | null> {
   const { userId } = await auth();
   if (!userId) {

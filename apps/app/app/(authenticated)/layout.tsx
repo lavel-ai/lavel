@@ -11,8 +11,7 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { PostHogIdentifier } from './components/posthog-identifier';
 import { GlobalSidebar } from './components/sidebar';
-import { PageViewTracker } from '@repo/analytics/posthog/components/page-view-tracker';
-
+import { PageViewTracker } from '@repo/analytics';
 /**
  * Properties for the AppLayout component.
  */

@@ -1,0 +1,214 @@
+---
+title: 'Form Components Guide'
+description: 'Guide to using reusable form components in the application'
+---
+
+# Form Components Guide
+
+This guide explains how to use the reusable form components to create consistent, DRY, and analytics-enabled forms throughout the application.
+
+## Overview
+
+The Form Components system provides:
+
+1. **Reusable Field Components** - Standardized UI components for common form fields
+2. **EntityForm Wrapper** - A wrapper component that handles form state, validation, submission, and analytics
+3. **Form Analytics** - Built-in tracking for form interactions, submissions, and errors
+
+## Reusable Field Components
+
+### Available Field Components
+
+We provide several reusable field components:
+
+- `TextField` - For text input fields
+- `TextareaField` - For multi-line text input
+- `SwitchField` - For boolean toggle inputs
+
+All field components follow a consistent API and handle proper form integration automatically.
+
+### Using Field Components
+
+```tsx
+import { TextField, TextareaField, SwitchField } from '@/app/components/forms/fields';
+
+// Inside your form component:
+<TextField
+  form={form}
+  name="name"
+  label="Name"
+  placeholder="Enter name"
+  description="The name of the entity."
+  required
+/>
+
+<TextareaField
+  form={form}
+  name="description"
+  label="Description"
+  placeholder="Enter description"
+  rows={4}
+/>
+
+<SwitchField
+  form={form}
+  name="active"
+  label="Active"
+  description="Whether this entity is active."
+/>
+```
+
+## EntityForm Wrapper
+
+The `EntityForm` component provides a standardized wrapper for entity forms that handles:
+
+- Form state management with react-hook-form
+- Schema validation with Zod
+- Form submission and error handling
+- Success and error notifications
+- Analytics tracking
+- Form abandonment tracking
+
+### Using EntityForm
+
+```tsx
+import { EntityForm } from '@/app/components/forms/entity-form';
+import { z } from 'zod';
+import { createEntityAction } from '@/app/actions/entity/create';
+import { TextField } from '@/app/components/forms/fields';
+
+// Define your schema
+const formSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+export function MyEntityForm() {
+  return (
+    <EntityForm<FormValues>
+      schema={formSchema}
+      defaultValues={{
+        name: '',
+        description: '',
+      }}
+      action={createEntityAction}
+      successMessage={(data) => `Successfully created: ${data.name}`}
+      errorMessage="Error creating entity"
+      submitLabel="Create"
+      entityType="myEntity"
+    >
+      <TextField
+        name="name"
+        label="Name"
+        placeholder="Enter name"
+        required
+      />
+      
+      <TextareaField
+        name="description"
+        label="Description"
+        placeholder="Enter description"
+      />
+    </EntityForm>
+  );
+}
+```
+
+## Form Analytics
+
+The form components automatically track various analytics events:
+
+1. **Form Started** - When a user first interacts with a form
+2. **Field Interactions** - When users interact with specific fields
+3. **Form Submission** - When a form is submitted
+4. **Form Success** - When a form submission succeeds
+5. **Form Error** - When a form submission fails
+6. **Form Abandonment** - When a user leaves a form without submitting
+
+### Custom Analytics Hook
+
+For more advanced analytics needs, you can use the `useFormAnalytics` hook directly:
+
+```tsx
+import { useFormAnalytics } from '@/app/hooks/analytics/use-form-analytics';
+
+// Inside your form component:
+const analytics = useFormAnalytics(form, {
+  formType: 'customForm',
+  entityType: 'customEntity',
+  entityId: '123',
+});
+
+// Get analytics data
+const interactedFields = analytics.getInteractedFields();
+const formDuration = analytics.getFormDuration();
+```
+
+## Best Practices
+
+1. **Use Reusable Components** - Always use the provided field components rather than creating custom ones
+2. **Consistent Naming** - Use consistent naming for form fields across similar entities
+3. **Proper Schema Validation** - Define comprehensive Zod schemas for validation
+4. **Meaningful Error Messages** - Provide clear error messages for validation failures
+5. **Analytics Context** - Always provide proper entityType and other context for analytics tracking
+
+## Example: Complete Form Implementation
+
+Here's a complete example of a form implementation:
+
+```tsx
+import { EntityForm } from '@/app/components/forms/entity-form';
+import { TextField, TextareaField, SwitchField } from '@/app/components/forms/fields';
+import { z } from 'zod';
+import { createPracticeAreaAction } from '@/app/actions/entity/practice-area/create';
+
+// Create a client-side validation schema
+const formSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+  active: z.boolean().default(true),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+export function PracticeAreaForm() {
+  return (
+    <EntityForm<FormValues>
+      schema={formSchema}
+      defaultValues={{
+        name: '',
+        description: '',
+        active: true,
+      }}
+      action={createPracticeAreaAction}
+      successMessage={(data) => `Successfully created practice area: ${data.name}`}
+      errorMessage="Error creating practice area"
+      submitLabel="Create Practice Area"
+      entityType="practiceArea"
+    >
+      <TextField
+        name="name"
+        label="Name"
+        placeholder="Enter practice area name"
+        description="The name of the practice area."
+        required
+      />
+      
+      <TextareaField
+        name="description"
+        label="Description"
+        placeholder="Enter a description of this practice area"
+        description="Optional description of the practice area."
+      />
+      
+      <SwitchField
+        name="active"
+        label="Active"
+        description="Whether this practice area is currently active."
+      />
+    </EntityForm>
+  );
+}
+```

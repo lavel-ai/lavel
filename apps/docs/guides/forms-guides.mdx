@@ -19,6 +19,125 @@ This architecture addresses several critical challenges:
 
 This documentation explains how to use this architecture to create forms of varying complexity while maintaining consistency and reducing development effort.
 
+## Form Factory System
+
+The heart of our form architecture is the **Form Factory System**, which provides a standardized way to create form actions with built-in validation, analytics tracking, and error handling.
+
+### Architecture Overview
+
+The Form Factory System follows a pipeline architecture:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Client Form Submission                                      │
+└───────────────────────────────┬─────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Authentication Layer (withAuth)                             │
+└───────────────────────────────┬─────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Form Action Factory                                         │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Extract Form Data                                        │
+│ 2. Process Pipeline                                         │
+│    ├─ Sanitization                                          │
+│    ├─ Normalization                                         │
+│    └─ Validation                                            │
+│ 3. Database Operation                                       │
+│ 4. Analytics Tracking                                       │
+│ 5. Response Handling                                        │
+└───────────────────────────────┬─────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Client Response                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+1. **Form Action Factory**: Creates standardized server actions for form processing
+2. **Authentication Wrapper**: Provides user and tenant context
+3. **Form Processing Pipeline**: Handles data normalization and validation
+4. **Analytics Integration**: Tracks form submissions and errors
+5. **Error Handling**: Provides consistent error responses
+
+### Creating a Form Action
+
+To create a form action, use the `createFormAction` factory:
+
+```typescript
+// Define your form action
+const createUserAction = createFormAction({
+  entityType: 'user',                // Used for analytics and error tracking
+  schemaKey: 'userSchema',           // Schema to use for validation
+  dbOperation: async (db, data, user) => {
+    return db.users.create({ data });
+  },
+  successRedirect: '/dashboard/users',  // Optional redirect on success
+  revalidatePaths: ['/users'],          // Paths to revalidate on success
+});
+
+// Export with authentication
+export const createUser = withAuth(createUserAction);
+```
+
+### Form Action Options
+
+The `createFormAction` factory accepts the following options:
+
+```typescript
+type FormActionOptions<T> = {
+  entityType: string;                // Entity type for analytics
+  schemaKey?: string;                // Schema key for validation
+  dbOperation: (db, data, user) => Promise<any>;  // Database operation
+  analyticsEventType?: string;       // 'created' | 'updated' | etc.
+  successRedirect?: string | ((result) => string);  // Redirect path
+  revalidatePaths?: string[];        // Paths to revalidate
+  customContext?: Record<string, any>;  // Additional context
+};
+```
+
+### Form Action Response
+
+Form actions return a standardized response format:
+
+```typescript
+type FormActionResult<T> = {
+  data?: T;                         // Success data
+  error?: string;                   // Error message
+  fieldErrors?: Record<string, string[]>;  // Field-specific errors
+  changes?: Array<{                 // Normalization changes
+    field: string;
+    original: any;
+    normalized: any;
+  }>;
+  status?: 'success' | 'error' | 'validation_error';  // Status code
+};
+```
+
+### Analytics Integration
+
+The Form Factory System automatically tracks the following events:
+
+1. **Form Submission Success**: When a form is successfully submitted
+2. **Form Submission Error**: When a form submission fails
+3. **Entity Events**: When an entity is created or updated
+4. **Performance Metrics**: Processing time for pipeline and database operations
+
+### Error Handling
+
+The system provides comprehensive error handling:
+
+1. **Validation Errors**: Field-specific errors from schema validation
+2. **Runtime Errors**: Unexpected errors during processing
+3. **Authentication Errors**: User not authenticated or not found
+
+All errors are captured for observability and tracked in analytics.
+
 ## Schema Flow
 
 Data flows through our form architecture in the following sequence:

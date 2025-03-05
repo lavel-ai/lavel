@@ -6,7 +6,6 @@ import { notFound } from 'next/navigation';
 import { AvatarStack } from './components/avatar-stack';
 import { Cursors } from './components/cursors';
 import { Header } from './components/header';
-import { TestUserId } from './components/test-user-id';
 
 
 const title = 'Acme Inc';
@@ -40,7 +39,6 @@ const App = async () => {
           </CollaborationProvider>
         )}
       </Header>
-      <TestUserId />
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         {/* Render KPI components directly */}
         <div className="grid auto-rows-min gap-4 md:grid-cols-3">

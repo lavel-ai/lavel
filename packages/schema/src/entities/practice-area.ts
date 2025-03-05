@@ -9,7 +9,7 @@ export const practiceAreaSchema = z.object({
   active: z.boolean().default(true),
 });
 
-// Register with the schema registry
+// packages/schema/src/entities/practice-area.ts
 schemaRegistry.registerEntitySchema({
   name: 'practiceArea',
   version: '1.0.0',
@@ -20,5 +20,9 @@ schemaRegistry.registerEntitySchema({
     description: { trim: true },
   }
 });
+
+// Add this logging to check if registration occurs
+console.log('Practice area schema registered:', 
+  schemaRegistry.get('practiceArea') ? 'SUCCESS' : 'FAILED');
 
 export type PracticeArea = z.infer<typeof practiceAreaSchema>;

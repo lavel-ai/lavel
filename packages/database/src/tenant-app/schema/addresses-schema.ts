@@ -10,8 +10,6 @@ import {
   import { relations } from 'drizzle-orm';
   import { clientAddresses } from './client-addresses-schema';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-import { z } from 'zod';
-import { schemaTransformers } from '../utils/text-normalization';
 
 // --- Address Table ---
 export const addresses = pgTable('addresses', {
@@ -50,19 +48,7 @@ export type InsertAddress = typeof addresses.$inferInsert;
 
 // --- Validation Schemas ---
 // Base address schema with validation
-export const addressSchema = createInsertSchema(addresses, {
-  street: schemaTransformers.address.street,
-  city: schemaTransformers.address.city,
-  state: schemaTransformers.address.state,
-  zipCode: schemaTransformers.address.zipCode,
-  country: schemaTransformers.address.country,
-  addressType: z.enum(['billing', 'shipping', 'home', 'work', 'other']).optional(),
-  // Google Places fields are optional
-  placeId: z.string().optional(),
-  formattedAddress: z.string().optional(),
-  latitude: z.string().optional(),
-  longitude: z.string().optional(),
-});
+export const addressSchema = createInsertSchema(addresses);
 
 // Schema for selecting addresses
 export const addressSelectSchema = createSelectSchema(addresses); 

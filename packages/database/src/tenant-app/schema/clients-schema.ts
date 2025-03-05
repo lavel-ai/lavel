@@ -14,8 +14,6 @@ import { teams } from './teams-schema';
 import { clientAddresses } from './client-addresses-schema';
 import { clientContacts } from './client-contacts-schema';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-import { z } from 'zod';
-import { schemaTransformers } from '../utils/text-normalization';
 import { profiles } from './profiles-schema';
 // Helper for soft delete where clause
 export const notDeleted = (table: { deletedAt: any }) => sql`${table.deletedAt} IS NULL`;
@@ -110,10 +108,6 @@ export type Client = typeof clients.$inferSelect;
 export type InsertClient = typeof clients.$inferInsert;
 
 // --- Validation Schemas ---
-export const clientInsertSchema = createInsertSchema(clients, {
-  legalName: schemaTransformers.name,
-  taxId: z.string().max(13).optional(),
-  portalAccessEmail: schemaTransformers.email.optional(),
-});
+export const clientInsertSchema = createInsertSchema(clients);
 
 export const clientSelectSchema = createSelectSchema(clients);

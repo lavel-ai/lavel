@@ -1,6 +1,7 @@
-// packages/schema/src/actions/with-auth.ts
+// apps/app/app/utils/with-auth.ts
 import { auth } from '@repo/auth/server';
-import { captureError } from '@repo/observability/error';
+import { captureErrorBase } from '@repo/observability/error-capture';
+import { trackErrorEvent, trackUserAction } from '@repo/analytics/server';
 
 /**
  * Authentication context provided to server actions
@@ -9,8 +10,17 @@ export interface AuthContext {
   db: any;
   user: any;
   userId: string;
-  tenantId?: string;
+  tenantId: string;
 }
+
+/**
+ * Standard response format for server actions
+ */
+export type ActionResponse<T> = 
+  | { status: 'success'; data: T; }
+  | { status: 'error'; error: string; fieldErrors?: Record<string, string[]>; }
+  | { status: 'unauthorized'; error: string; }
+  | { status: 'not_found'; error: string; };
 
 /**
  * Higher-order function that wraps server actions with authentication
@@ -22,12 +32,28 @@ export interface AuthContext {
 export function withAuth<Args extends any[], Return>(
   actionFn: (context: AuthContext, ...args: Args) => Promise<Return>
 ) {
-  return async function(...args: Args): Promise<Return | { status: 'error'; message: string }> {
+  return async function(...args: Args): Promise<Return | ActionResponse<any>> {
     try {
       // Authentication check
       const { userId } = await auth();
       if (!userId) {
-        return { status: 'error', message: 'Unauthorized' };
+        const errorMessage = 'Authentication required';
+        
+        // Track unauthorized access attempt
+        await trackErrorEvent({
+          userId: 'anonymous',
+          tenantId: 'unknown',
+          errorMessage,
+          errorContext: 'authentication',
+          source: 'withAuth',
+          severity: 'medium',
+          tags: ['auth', 'unauthorized']
+        });
+        
+        return { 
+          status: 'unauthorized', 
+          error: errorMessage 
+        };
       }
       
       // Get tenant database connection
@@ -38,27 +64,99 @@ export function withAuth<Args extends any[], Return>(
       const getTenantIdentifier = (await import('../utils/tenant-identifier')).getTenantIdentifier;
       const tenantId = await getTenantIdentifier();
       
+      if (!tenantId) {
+        const errorMessage = 'Tenant context required';
+        
+        // Track missing tenant context
+        await trackErrorEvent({
+          userId,
+          tenantId: 'unknown',
+          errorMessage,
+          errorContext: 'tenant_resolution',
+          source: 'withAuth',
+          severity: 'high',
+          tags: ['auth', 'tenant']
+        });
+        
+        return { 
+          status: 'error', 
+          error: errorMessage 
+        };
+      }
+      
       // Map Clerk ID to internal user ID
       const user = await db.query.users.findFirst({
         where: (users, { eq }) => eq(users.clerkId, userId)
       });
       
       if (!user) {
-        return { status: 'error', message: 'User not found' };
+        const errorMessage = 'User not found in tenant context';
+        
+        // Track user not found
+        await trackErrorEvent({
+          userId,
+          tenantId,
+          errorMessage,
+          errorContext: 'user_resolution',
+          source: 'withAuth',
+          severity: 'high',
+          tags: ['auth', 'user_not_found']
+        });
+        
+        return { 
+          status: 'not_found', 
+          error: errorMessage 
+        };
       }
+      
+      // Track successful authentication
+      await trackUserAction(
+        userId,
+        tenantId,
+        'authenticated_action',
+        { actionType: actionFn.name || 'unknown_action' }
+      );
       
       // Call the actual action with the authenticated context
       return actionFn({ db, user, userId, tenantId }, ...args);
     } catch (error) {
-      // Log and capture the error
-      captureError(error, {
+      // Get user ID if possible (for error tracking)
+      let errorUserId = 'unknown';
+      try {
+        errorUserId = (await auth())?.userId || 'unknown';
+      } catch {
+        // Ignore auth errors in error handler
+      }
+      
+      // Capture the error for observability
+      const errorMessage = await captureErrorBase(error, {
         context: 'serverAction',
-        userId: (await auth())?.userId,
+        userId: errorUserId,
         source: 'withAuth',
-        additionalData: { args: JSON.stringify(args) }
+        additionalData: { 
+          args: JSON.stringify(args),
+          actionName: actionFn.name || 'unknown_action'
+        }
       });
       
-      return { status: 'error', message: 'An error occurred' };
+      // Track error event
+      await trackErrorEvent({
+        userId: errorUserId,
+        tenantId: 'unknown',
+        errorMessage,
+        errorContext: 'server_action',
+        source: 'withAuth',
+        severity: 'high',
+        additionalData: {
+          actionName: actionFn.name || 'unknown_action'
+        },
+        tags: ['server_action', 'runtime_error']
+      });
+      
+      return { 
+        status: 'error', 
+        error: errorMessage 
+      };
     }
   };
 }

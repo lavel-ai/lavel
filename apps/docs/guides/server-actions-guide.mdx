@@ -1,0 +1,309 @@
+# Lavel AI Server Actions Architecture
+
+## Introduction
+
+Server Actions are a critical part of the Lavel AI application architecture, providing a secure and efficient way to handle server-side operations. This guide documents our approach to server actions, focusing on authentication, error handling, analytics tracking, and integration with our form processing system.
+
+## Architecture Overview
+
+Our server actions architecture follows a layered approach:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Client Components                                           │
+└───────────────────────────────┬─────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Server Action (withAuth HOC)                                │
+├─────────────────────────────────────────────────────────────┤
+│ - Authentication                                            │
+│ - Tenant Context                                            │
+│ - User Resolution                                           │
+│ - Error Handling                                            │
+│ - Analytics Tracking                                        │
+└───────────────────────────────┬─────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Core Action Logic                                           │
+├─────────────────────────────────────────────────────────────┤
+│ - Form Processing (for form actions)                        │
+│ - Database Operations                                       │
+│ - Business Logic                                            │
+│ - Performance Tracking                                      │
+└───────────────────────────────┬─────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Response Handling                                           │
+├─────────────────────────────────────────────────────────────┤
+│ - Success Response                                          │
+│ - Error Response                                            │
+│ - Revalidation                                              │
+│ - Redirects                                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Authentication and Authorization
+
+### The `withAuth` Higher-Order Component
+
+All server actions that require authentication should be wrapped with the `withAuth` HOC:
+
+```typescript
+import { withAuth } from '@/app/utils/with-auth';
+
+// Define your server action
+async function myServerAction(context, data) {
+  // Use context.user, context.db, context.tenantId
+  return { success: true };
+}
+
+// Export with authentication
+export const authenticatedAction = withAuth(myServerAction);
+```
+
+The `withAuth` HOC provides:
+
+1. **Authentication Check**: Verifies the user is authenticated
+2. **Tenant Context**: Resolves the current tenant
+3. **User Resolution**: Finds the user in the tenant's database
+4. **Error Handling**: Captures and formats authentication errors
+5. **Analytics Tracking**: Tracks authentication events
+
+### Authentication Context
+
+Server actions receive an `AuthContext` with the following properties:
+
+```typescript
+interface AuthContext {
+  db: any;           // Database client for the tenant
+  user: any;         // User object from the database
+  userId: string;    // User ID (from auth provider)
+  tenantId: string;  // Current tenant ID
+}
+```
+
+### Response Format
+
+Authentication responses follow a standardized format:
+
+```typescript
+type ActionResponse<T> = 
+  | { status: 'success'; data: T; }
+  | { status: 'error'; error: string; fieldErrors?: Record<string, string[]>; }
+  | { status: 'unauthorized'; error: string; }
+  | { status: 'not_found'; error: string; };
+```
+
+## Error Handling
+
+### Error Capture
+
+Server actions use the `captureErrorBase` function to record errors:
+
+```typescript
+import { captureErrorBase } from '@repo/observability/error-capture';
+
+try {
+  // Action logic
+} catch (error) {
+  const errorMessage = await captureErrorBase(error, {
+    context: 'actionName',
+    userId,
+    tenantId,
+    source: 'server-action',
+    additionalData: { /* context */ }
+  });
+  
+  return { status: 'error', error: errorMessage };
+}
+```
+
+### Error Tracking
+
+Errors are tracked in analytics using the `trackErrorEvent` function:
+
+```typescript
+import { trackErrorEvent } from '@repo/analytics/server';
+
+await trackErrorEvent({
+  userId,
+  tenantId,
+  errorMessage,
+  errorContext: 'server_action',
+  source: 'actionName',
+  severity: 'high',
+  tags: ['server_action', 'runtime_error']
+});
+```
+
+## Analytics Integration
+
+Server actions integrate with our analytics system to track:
+
+1. **Authentication Events**: Success, failure, user not found
+2. **Performance Metrics**: Processing time, database operation time
+3. **Error Events**: Runtime errors, validation errors
+4. **Entity Events**: Created, updated, deleted, viewed
+
+Example of tracking a performance metric:
+
+```typescript
+import { trackPerformanceMetric } from '@repo/analytics/server';
+
+const startTime = performance.now();
+// Perform operation
+await trackPerformanceMetric(
+  userId,
+  tenantId,
+  'operation_name',
+  performance.now() - startTime,
+  { entityType, operation: 'create' }
+);
+```
+
+## Form Actions
+
+Form actions are a specialized type of server action that handle form submissions. See the [Forms Guide](/apps/docs/guides/forms-guides.mdx) for details on how form actions integrate with this architecture.
+
+## Best Practices
+
+1. **Always Use Authentication**: Wrap all server actions with `withAuth` unless they explicitly need to be public.
+
+2. **Consistent Error Handling**: Follow the standard error format for all responses.
+
+3. **Track Performance**: Add performance tracking for operations that might be slow.
+
+4. **Tenant Isolation**: Always use the tenant-specific database client from the context.
+
+5. **Typed Responses**: Define proper types for your action responses.
+
+6. **Revalidation**: Use `revalidatePath` or `revalidateTag` after mutations.
+
+## Examples
+
+### Basic Server Action
+
+```typescript
+'use server';
+
+import { withAuth } from '@/app/utils/with-auth';
+
+async function getProjectList(
+  { db, user, userId, tenantId },
+  { page = 1, limit = 10 }
+) {
+  try {
+    const startTime = performance.now();
+    
+    const projects = await db.query.projects.findMany({
+      where: (projects, { eq }) => eq(projects.tenantId, tenantId),
+      limit,
+      offset: (page - 1) * limit,
+    });
+    
+    await trackPerformanceMetric(
+      userId,
+      tenantId,
+      'project_list_query',
+      performance.now() - startTime,
+      { page, limit }
+    );
+    
+    return { 
+      status: 'success',
+      data: projects 
+    };
+  } catch (error) {
+    const errorMessage = await captureErrorBase(error, {
+      context: 'getProjectList',
+      userId,
+      tenantId,
+      source: 'server-action',
+      additionalData: { page, limit }
+    });
+    
+    return { 
+      status: 'error', 
+      error: errorMessage 
+    };
+  }
+}
+
+export const getProjects = withAuth(getProjectList);
+```
+
+### Entity Mutation Action
+
+```typescript
+'use server';
+
+import { withAuth } from '@/app/utils/with-auth';
+import { revalidatePath } from 'next/cache';
+import { trackEntityUpdated } from '@repo/analytics/server';
+
+async function updateProjectStatus(
+  { db, user, userId, tenantId },
+  { projectId, status }
+) {
+  try {
+    const project = await db.query.projects.findFirst({
+      where: (projects, { eq, and }) => and(
+        eq(projects.id, projectId),
+        eq(projects.tenantId, tenantId)
+      )
+    });
+    
+    if (!project) {
+      return { 
+        status: 'not_found', 
+        error: 'Project not found' 
+      };
+    }
+    
+    const updatedProject = await db.update(projects).set({
+      status,
+      updatedAt: new Date()
+    }).where(eq(projects.id, projectId)).returning();
+    
+    // Track entity update
+    await trackEntityUpdated({
+      userId,
+      tenantId,
+      entityType: 'project',
+      entityId: projectId,
+      metadata: { status }
+    });
+    
+    // Revalidate related paths
+    revalidatePath(`/dashboard/projects/${projectId}`);
+    revalidatePath('/dashboard/projects');
+    
+    return { 
+      status: 'success', 
+      data: updatedProject[0] 
+    };
+  } catch (error) {
+    const errorMessage = await captureErrorBase(error, {
+      context: 'updateProjectStatus',
+      userId,
+      tenantId,
+      source: 'server-action',
+      additionalData: { projectId, status }
+    });
+    
+    return { 
+      status: 'error', 
+      error: errorMessage 
+    };
+  }
+}
+
+export const updateStatus = withAuth(updateProjectStatus);
+```
+
+## Conclusion
+
+This server actions architecture provides a consistent, secure, and observable foundation for all server-side operations in the Lavel AI application. By following these patterns, we ensure that all actions have proper authentication, error handling, and analytics tracking.

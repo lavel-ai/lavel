@@ -11,7 +11,7 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { PostHogIdentifier } from './components/posthog-identifier';
 import { GlobalSidebar } from './components/sidebar';
-import { PageViewTracker } from '@repo/analytics';
+// import { PageViewTracker } from '@repo/analytics';
 /**
  * Properties for the AppLayout component.
  */
@@ -102,7 +102,7 @@ const AppLayout = async ({ children }: AppLayoutProperties) => {
             {children}
           </GlobalSidebar>
           <PostHogIdentifier />
-          <PageViewTracker />
+          {/* <PageViewTracker /> */}
         </SidebarProvider>
       </NotificationsProvider>
   );

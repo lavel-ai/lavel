@@ -35,7 +35,7 @@
     "@tanstack/react-table": "^8.21.2",
     "@tanstack/react-virtual": "^3.13.2",
     "dotenv": "^16.4.7",
-    "drizzle-orm": "^0.40.0",
+    "drizzle-orm": "^0.41.0",
     "framer-motion": "^12.4.7",
     "fuse.js": "^7.1.0",
     "import-in-the-middle": "^1.13.1",
